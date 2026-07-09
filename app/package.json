@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.14",
+    "buffer": "^6.0.3",
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",

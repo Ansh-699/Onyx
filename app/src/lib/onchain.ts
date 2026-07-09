@@ -7,6 +7,7 @@
 // (128 bytes, byte-for-byte offsets documented there). Decoded here in plain
 // TS with DataView since there's no Anchor IDL for this Pinocchio program.
 
+import { Buffer } from "buffer";
 import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
 
 export const ONYX_PROGRAM_ID = new PublicKey(
