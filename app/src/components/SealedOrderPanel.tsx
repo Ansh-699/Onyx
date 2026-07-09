@@ -114,10 +114,29 @@ export function SealedOrderPanel({ market }: { market: OnChainMarket }) {
     e.preventDefault();
     setError(null);
     if (!publicKey) return;
-    setBusy("Placing sealed bet…");
+    setBusy("Getting devnet test-USDC…");
     try {
       const usdcMint = await getConfigUsdcMint();
       if (!usdcMint) throw new Error("config not initialized on devnet yet");
+
+      // A fresh wallet has no ATA and no balance for the test-USDC mint;
+      // submit_sealed_order does a raw SPL Transfer with no ATA-creation
+      // fallback, so the very first bet from any new wallet would otherwise
+      // fail with "invalid account data for instruction". Ensure both exist
+      // before building the order (server-side devnet faucet, same
+      // create-ATA-if-missing + mint-if-low pattern already used for the
+      // house counterparty in api/house-counter).
+      const faucetRes = await fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: publicKey.toBase58() }),
+      });
+      const faucetBody = await faucetRes.json();
+      if (!faucetRes.ok || !faucetBody.ok) {
+        throw new Error(`devnet faucet failed: ${faucetBody.error ?? faucetRes.status}`);
+      }
+
+      setBusy("Placing sealed bet…");
       const nonce = BigInt(Math.floor(Math.random() * 1_000_000_000));
       const sizeB = BigInt(size);
       const priceB = BigInt(limitPrice);
