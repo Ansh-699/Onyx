@@ -99,3 +99,27 @@ h2 {
   height: 38px !important;
   font-size: 0.85rem !important;
 }
+
+/* Defensive: the wallet-adapter-react-ui dropdown (account menu) and modal
+   (wallet picker) are meant to stay hidden until opened, and the library's
+   own stylesheet already does this -- but they're mounted in the DOM at all
+   times (grid/list layout, not display:none), so any CSS specificity/load-
+   order issue can make their list items flash visible as unstyled bullet
+   rows near the wallet button. Re-assert the hidden defaults here, with
+   higher specificity than the library's own rules, so this can't happen
+   regardless of import order. Only affects visibility/list styling, never
+   signing/approval behavior. */
+.wallet-adapter-dropdown-list,
+.wallet-adapter-modal-list {
+  list-style: none !important;
+  margin: 0;
+}
+.wallet-adapter-dropdown-list:not(.wallet-adapter-dropdown-list-active) {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+.wallet-adapter-modal:not(.wallet-adapter-modal-fade-in) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

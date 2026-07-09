@@ -4,10 +4,13 @@ import {
   getMarket,
   STATUS_NAMES,
   OUTCOME_NAMES,
-  CMP_SYMBOLS,
+  STATUS_SETTLED,
+  STATUS_CLAIMED,
   PHASE_NONE,
   explorerAddressUrl,
 } from "@/lib/onchain";
+import { describeMarketPredicate, rawPredicateText } from "@/lib/statKeys";
+import { getFixtureInfo, fixtureDisplayName } from "@/lib/fixtureMeta";
 import { LiveScore } from "@/components/LiveScore";
 import { SealedOrderPanel } from "@/components/SealedOrderPanel";
 import { SettleClaimPanel } from "@/components/SettleClaimPanel";
@@ -25,19 +28,25 @@ export default async function MarketPage({
 
   const total = market.totalSideA + market.totalSideB;
   const yesPct = total > 0n ? Number((market.totalSideA * 100n) / total) : 50;
-  const settled = market.status >= 4;
+  const settled = market.status === STATUS_SETTLED || market.status === STATUS_CLAIMED;
+  const fixtureInfo = getFixtureInfo(Number(market.fixtureId));
+  const friendlyTitle = describeMarketPredicate(market, fixtureInfo ?? undefined);
+  const rawPredicate = rawPredicateText(market);
 
   return (
     <>
       <p>
         <Link href="/">← Lobby</Link>
       </p>
-      <h1>
-        stat[{market.statAKey}] {CMP_SYMBOLS[market.predicate] ?? "?"}{" "}
-        {market.threshold.toString()}
-      </h1>
+      <h1>{friendlyTitle}</h1>
+      <p className="mono muted" style={{ fontSize: "0.8rem" }}>
+        raw predicate: <span title="Exactly what's encoded on-chain and checked in the validate_stat CPI.">{rawPredicate}</span>
+      </p>
       <p className="muted">
-        fixture #{market.fixtureId.toString()} · live on-chain market (devnet)
+        {fixtureInfo
+          ? `${fixtureDisplayName(Number(market.fixtureId))} (fixture #${market.fixtureId})`
+          : fixtureDisplayName(Number(market.fixtureId))}{" "}
+        · live on-chain market (devnet)
       </p>
       <p className="mono muted">
         market{" "}
@@ -47,7 +56,10 @@ export default async function MarketPage({
       </p>
 
       <h2>Live</h2>
-      <LiveScore homeLabel={`Fixture #${market.fixtureId}`} awayLabel="TxLINE" />
+      <LiveScore
+        homeLabel={fixtureInfo?.participant1 ?? `Fixture #${market.fixtureId}`}
+        awayLabel={fixtureInfo?.participant2 ?? "TxLINE"}
+      />
 
       <h2>Market (on-chain state)</h2>
       <div className="card">

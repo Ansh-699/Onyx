@@ -26,15 +26,24 @@ export function getConnection(): Connection {
 export const DISC_MARKET = 2;
 export const DISC_SEALED_ORDER = 4;
 
+export const STATUS_DRAFT = 0;
+export const STATUS_OPEN = 1;
+export const STATUS_LIVE = 2;
+export const STATUS_SETTLING = 3;
+export const STATUS_SETTLED = 4;
+export const STATUS_CLAIMED = 5;
+export const STATUS_EXPIRED = 6;
+export const STATUS_REFUNDED = 7;
+
 export const STATUS_NAMES: Record<number, string> = {
-  0: "Draft",
-  1: "Open",
-  2: "Live",
-  3: "Settling",
-  4: "Settled",
-  5: "Claimed",
-  6: "Expired",
-  7: "Refunded",
+  [STATUS_DRAFT]: "Draft",
+  [STATUS_OPEN]: "Open",
+  [STATUS_LIVE]: "Live",
+  [STATUS_SETTLING]: "Settling",
+  [STATUS_SETTLED]: "Settled",
+  [STATUS_CLAIMED]: "Claimed",
+  [STATUS_EXPIRED]: "Expired",
+  [STATUS_REFUNDED]: "Refunded",
 };
 export const OUTCOME_NAMES: Record<number, string> = {
   0: "Unknown",
