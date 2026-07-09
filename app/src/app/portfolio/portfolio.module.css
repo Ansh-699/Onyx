@@ -1,0 +1,133 @@
+/* Portfolio page — token-system styles only (vars from globals.css).
+   Rows are flex cards that wrap, so nothing needs horizontal scroll at 390px. */
+
+.intro {
+  margin: 0 0 4px;
+}
+
+.section {
+  margin-top: 28px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+}
+
+.rowMain {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.question {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sub {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  margin-top: 2px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.sub > span + span::before {
+  content: "·";
+  color: var(--text-faint);
+  margin-right: 6px;
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.claimBtn {
+  padding: 6px 14px;
+  font-size: 0.82rem;
+}
+
+/* Sealed-order rows reuse .row/.rowMain; commitment hash gets mono treatment. */
+.hash {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  word-break: normal;
+}
+
+.amount {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Connect / empty states */
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 56px 24px;
+  margin-top: 24px;
+}
+
+.gateTitle {
+  font-weight: 650;
+  font-size: 1.05rem;
+}
+
+.empty {
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  padding: 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  margin-top: 12px;
+}
+
+/* Skeletons — same height as a one-line .card row so nothing shifts. */
+.skelRow {
+  height: 76px;
+  border-radius: var(--radius);
+}
+
+.txNote {
+  font-size: 0.8rem;
+  margin-top: 10px;
+}
+
+.error {
+  color: var(--red);
+  font-size: 0.85rem;
+  margin-top: 10px;
+}
+
+.footNote {
+  margin-top: 32px;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
+@media (max-width: 640px) {
+  .row {
+    align-items: flex-start;
+  }
+  .rowMeta {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
