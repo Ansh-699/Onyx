@@ -38,7 +38,7 @@ export default async function MarketPage({
   return (
     <>
       <p>
-        <Link href="/">← Lobby</Link>
+        <Link href="/markets">← Markets</Link>
       </p>
       <h1>{friendlyTitle}</h1>
       <p className="mono muted" style={{ fontSize: "0.8rem" }}>

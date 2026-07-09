@@ -9,6 +9,7 @@ import { comparisonSymbol } from "@/lib/merkle";
 import { getConfigUsdcMint, explorerTxUrl, explorerAddressUrl } from "@/lib/onchain";
 import { SELECTABLE_STAT_OPTIONS } from "@/lib/statKeys";
 import { listUpcomingRealFixtures } from "@/lib/fixtureMeta";
+import { friendlyError } from "@/lib/errors";
 import {
   buildOpenMarketSealedIx,
   computeParamsHash,
@@ -133,7 +134,7 @@ export default function CreatePage() {
       setResult({ signature, market: market.toBase58() });
       setPhase("done");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(friendlyError(err));
       setPhase("error");
     }
   }

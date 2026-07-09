@@ -1,10 +1,12 @@
 .nav {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.85rem 1.5rem;
+  gap: 24px;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -13,7 +15,7 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 10px;
 }
 
 .logo {
@@ -23,34 +25,63 @@
   color: var(--text);
   text-decoration: none;
 }
+.logo:hover {
+  text-decoration: none;
+}
 
 .badge {
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  padding: 0.15rem 0.45rem;
-  border-radius: 999px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
   background: var(--accent-dim);
   color: var(--accent);
-  border: 1px solid var(--accent);
+  border: 1px solid transparent;
 }
 
 .links {
   display: flex;
-  gap: 1.25rem;
+  gap: 4px;
   margin-left: auto;
 }
 
 .links a {
   color: var(--text-dim);
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  transition: color 120ms ease, background 120ms ease;
 }
 
 .links a:hover {
   color: var(--text);
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.links a[data-active="true"] {
+  color: var(--text);
+  background: var(--surface-2);
 }
 
 .wallet {
-  margin-left: 0.5rem;
+  margin-left: 8px;
+}
+
+@media (max-width: 640px) {
+  .nav {
+    padding: 10px 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .links {
+    gap: 0;
+  }
+  .links a {
+    padding: 6px 8px;
+    font-size: 0.82rem;
+  }
 }

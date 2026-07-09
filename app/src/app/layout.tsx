@@ -1,23 +1,26 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { OnyxWalletProvider } from "@/components/WalletProvider";
+import { QueryProvider } from "@/components/QueryProvider";
 import { Nav } from "@/components/Nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ONYX — verifiable in-play markets",
+  title: "ONYX — verifiable prediction markets on Solana",
   description:
-    "MEV-proof, on-chain-verifiable World Cup prediction markets on Solana devnet.",
+    "Sealed, MEV-proof World Cup prediction markets with trustless oracle settlement — every outcome independently verifiable on-chain. Solana devnet.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <OnyxWalletProvider>
-          <Nav />
-          <main>{children}</main>
-        </OnyxWalletProvider>
+        <QueryProvider>
+          <OnyxWalletProvider>
+            <Nav />
+            <main>{children}</main>
+          </OnyxWalletProvider>
+        </QueryProvider>
       </body>
     </html>
   );
