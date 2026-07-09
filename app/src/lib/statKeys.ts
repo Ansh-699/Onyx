@@ -48,6 +48,16 @@ const PERIOD_PREFIX: Record<number, string> = {
   5: "penalties ",
 };
 
+/** Selectable single-stat options for the Create page — real verified TxLINE keys, full match (period 0) only. */
+export const SELECTABLE_STAT_OPTIONS: { label: string; key: number }[] = [
+  { label: "P1 goals", key: 1 },
+  { label: "P2 goals", key: 2 },
+  { label: "P1 yellow cards", key: 3 },
+  { label: "P2 yellow cards", key: 4 },
+  { label: "P1 corners", key: 7 },
+  { label: "P2 corners", key: 8 },
+];
+
 export function decodeStatKey(key: number): { period: number; baseKey: number } {
   return { period: Math.floor(key / 1000), baseKey: key % 1000 };
 }

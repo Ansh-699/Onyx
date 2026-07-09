@@ -41,3 +41,28 @@ export function fixtureDisplayName(fixtureId: number): string {
   if (info) return `${info.participant1} vs ${info.participant2}`;
   return `World Cup fixture #${fixtureId}`;
 }
+
+// Kickoff time (ms since epoch), verified live 2026-07-09 via TxLINE
+// /scores/snapshot/{fixtureId} (StartTime field). Kept separate from
+// KNOWN_FIXTURES because we know kickoff time for 18179550 even though its
+// team names aged out of the /fixtures/snapshot window (see header comment)
+// -- used by the live-scores API route to tell "upcoming" from
+// "kicked off" without guessing.
+const KNOWN_START_TIMES: Record<number, number> = {
+  18179550: 1_782_936_000_000,
+  18209181: 1_783_627_200_000,
+  18213979: 1_783_803_600_000,
+  18218149: 1_783_710_000_000,
+  18222446: 1_783_818_000_000,
+};
+
+export function getFixtureStartTimeMs(fixtureId: number): number | null {
+  return KNOWN_START_TIMES[fixtureId] ?? null;
+}
+
+/** Real, currently-upcoming World Cup fixtures with known team names — for the Create page's fixture picker. */
+export function listUpcomingRealFixtures(): { fixtureId: number; info: FixtureInfo; startTimeMs: number | null }[] {
+  return Object.entries(KNOWN_FIXTURES)
+    .filter(([, info]) => info.competition === "World Cup")
+    .map(([id, info]) => ({ fixtureId: Number(id), info, startTimeMs: getFixtureStartTimeMs(Number(id)) }));
+}

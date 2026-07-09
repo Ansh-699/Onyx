@@ -17,6 +17,21 @@ function isPlaceholderFixture(fixtureId: bigint): boolean {
   return fixtureId >= 900_000_000n && fixtureId <= 900_000_999n;
 }
 
+// Earlier dev/demo runs opened several markets with the IDENTICAL predicate
+// on fixture 18179550 (same statA/statB/op/predicate/threshold, different
+// deadlines -> different PDAs) before this build had a varied predicate set.
+// Rather than hide real on-chain accounts, collapse same-predicate duplicates
+// into one row (preferring the one that actually got Settled/Claimed, since
+// that's the one demonstrating trustless settlement) and disclose the rest.
+function predicateKey(m: { statAKey: number; statBKey: number; op: number; predicate: number; threshold: bigint }): string {
+  return `${m.statAKey}|${m.statBKey}|${m.op}|${m.predicate}|${m.threshold}`;
+}
+function statusRank(status: number): number {
+  if (status === STATUS_CLAIMED) return 3;
+  if (status === STATUS_SETTLED) return 2;
+  return 1;
+}
+
 export default async function LobbyPage() {
   const allMarkets = await listMarkets();
   const markets = allMarkets.filter((m) => !isPlaceholderFixture(m.fixtureId));
@@ -68,23 +83,38 @@ export default async function LobbyPage() {
                 </div>
 
                 <ul className={styles.markets}>
-                  {ms.map((m) => {
-                    const title = describeMarketPredicate(m, info ?? undefined);
-                    const raw = rawPredicateText(m);
+                  {Object.values(
+                    ms.reduce<Record<string, typeof ms>>((groups, m) => {
+                      const key = predicateKey(m);
+                      (groups[key] ??= []).push(m);
+                      return groups;
+                    }, {}),
+                  ).map((group) => {
+                    const shown = [...group].sort((a, b) => statusRank(b.status) - statusRank(a.status))[0]!;
+                    const extra = group.length - 1;
+                    const title = describeMarketPredicate(shown, info ?? undefined);
+                    const raw = rawPredicateText(shown);
                     // Outcome is only meaningful once the oracle has actually
                     // resolved the market (Settled/Claimed) -- an
                     // Expired/Refunded market never got an outcome, so
                     // showing one there would misleadingly imply it settled.
-                    const showOutcome = m.status === STATUS_SETTLED || m.status === STATUS_CLAIMED;
+                    const showOutcome = shown.status === STATUS_SETTLED || shown.status === STATUS_CLAIMED;
                     return (
-                      <li key={m.pda}>
-                        <Link href={`/market/${m.pda}`} className={styles.market} title={raw}>
-                          <span className={styles.stat}>{title}</span>
+                      <li key={shown.pda}>
+                        <Link href={`/market/${shown.pda}`} className={styles.market} title={raw}>
+                          <span className={styles.stat}>
+                            {title}
+                            {extra > 0 && (
+                              <span className="muted" style={{ fontSize: "0.72rem", marginLeft: "0.4rem" }}>
+                                (+{extra} more market{extra === 1 ? "" : "s"} with this same predicate)
+                              </span>
+                            )}
+                          </span>
                           <span className={styles.pool}>
-                            <span className="pill">{STATUS_NAMES[m.status] ?? m.status}</span>
+                            <span className="pill">{STATUS_NAMES[shown.status] ?? shown.status}</span>
                             {showOutcome && (
                               <span className="pill" style={{ marginLeft: "0.4rem" }}>
-                                {OUTCOME_NAMES[m.outcome] ?? m.outcome}
+                                {OUTCOME_NAMES[shown.outcome] ?? shown.outcome}
                               </span>
                             )}
                           </span>

@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction } from "@solana/web3.js";
-import { FIXTURES, STAT_KEYS } from "@/lib/mock";
 import type { Comparison } from "@/lib/types";
 import { comparisonSymbol } from "@/lib/merkle";
 import { getConfigUsdcMint, explorerTxUrl, explorerAddressUrl } from "@/lib/onchain";
+import { SELECTABLE_STAT_OPTIONS } from "@/lib/statKeys";
+import { listUpcomingRealFixtures } from "@/lib/fixtureMeta";
 import {
   buildOpenMarketSealedIx,
   computeParamsHash,
@@ -40,6 +41,12 @@ const DEMO_FIXTURE = {
   defaultThreshold: 2,
 };
 
+// Real, currently-upcoming World Cup fixtures (verified live via TxLINE
+// /fixtures/snapshot, competitionId=72) -- not settleable yet (no proof
+// exists until they kick off and finish), but real fixtures with real team
+// names, same as the ones already seeded into the lobby.
+const REAL_UPCOMING_FIXTURES = listUpcomingRealFixtures();
+
 const CMP_MAP: Record<Comparison, number> = {
   greaterThan: CMP_GREATER_THAN,
   lessThan: CMP_LESS_THAN,
@@ -70,9 +77,7 @@ export default function CreatePage() {
   const [result, setResult] = useState<{ signature: string; market: string } | null>(null);
 
   const isDemoFixture = fixtureId === DEMO_FIXTURE.fixtureId;
-  const statOptions = isDemoFixture
-    ? [{ label: "Total goals", key: DEMO_FIXTURE.statKey }]
-    : Object.entries(STAT_KEYS).map(([label, key]) => ({ label, key }));
+  const statOptions = isDemoFixture ? [{ label: "P1 goals", key: DEMO_FIXTURE.statKey }] : SELECTABLE_STAT_OPTIONS;
   const statLabel = statOptions.find((s) => s.key === statKey)?.label ?? "stat";
 
   async function onSubmit(e: React.FormEvent) {
@@ -169,9 +174,9 @@ export default function CreatePage() {
             }}
           >
             <option value={DEMO_FIXTURE.fixtureId}>{DEMO_FIXTURE.label}</option>
-            {FIXTURES.map((f) => (
+            {REAL_UPCOMING_FIXTURES.map((f) => (
               <option key={f.fixtureId} value={f.fixtureId}>
-                {f.participant1} vs {f.participant2} (#{f.fixtureId}) — browsing only, no live settlement
+                {f.info.participant1} vs {f.info.participant2} (#{f.fixtureId}) — real fixture, not started yet, no settlement until it finishes
               </option>
             ))}
           </select>

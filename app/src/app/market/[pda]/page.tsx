@@ -10,7 +10,7 @@ import {
   explorerAddressUrl,
 } from "@/lib/onchain";
 import { describeMarketPredicate, rawPredicateText } from "@/lib/statKeys";
-import { getFixtureInfo, fixtureDisplayName } from "@/lib/fixtureMeta";
+import { getFixtureInfo, fixtureDisplayName, getFixtureStartTimeMs } from "@/lib/fixtureMeta";
 import { LiveScore } from "@/components/LiveScore";
 import { SealedOrderPanel } from "@/components/SealedOrderPanel";
 import { SettleClaimPanel } from "@/components/SettleClaimPanel";
@@ -32,6 +32,8 @@ export default async function MarketPage({
   const fixtureInfo = getFixtureInfo(Number(market.fixtureId));
   const friendlyTitle = describeMarketPredicate(market, fixtureInfo ?? undefined);
   const rawPredicate = rawPredicateText(market);
+  const startTimeMs = getFixtureStartTimeMs(Number(market.fixtureId));
+  const upcoming = typeof startTimeMs === "number" && startTimeMs > Date.now();
 
   return (
     <>
@@ -57,8 +59,10 @@ export default async function MarketPage({
 
       <h2>Live</h2>
       <LiveScore
-        homeLabel={fixtureInfo?.participant1 ?? `Fixture #${market.fixtureId}`}
-        awayLabel={fixtureInfo?.participant2 ?? "TxLINE"}
+        fixtureId={Number(market.fixtureId)}
+        homeLabel={fixtureInfo?.participant1 ?? "Participant 1"}
+        awayLabel={fixtureInfo?.participant2 ?? "Participant 2"}
+        startTimeMs={startTimeMs}
       />
 
       <h2>Market (on-chain state)</h2>
@@ -128,7 +132,9 @@ export default async function MarketPage({
       <p className="muted">
         {settled
           ? "This market has been settled trustlessly via a CPI to validate_stat against the anchored daily scores root."
-          : "At the deadline, ONYX settles this market via a CPI to validate_stat against the anchored daily scores root."}{" "}
+          : upcoming
+            ? "This fixture hasn't kicked off yet, so there's no final stat to settle against — settlement stays disabled until the match finishes and TxLINE publishes a validate_stat proof."
+            : "At the deadline, ONYX settles this market via a CPI to validate_stat against the anchored daily scores root."}{" "}
         Anyone can independently verify the outcome:
       </p>
       <SettleClaimPanel market={market} />
