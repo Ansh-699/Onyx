@@ -1,0 +1,53 @@
+[package]
+name = "onyx"
+version = "0.1.0"
+edition = "2021"
+description = "ONYX on-chain settlement program (Pinocchio, no_std, native)"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+default = []
+# `test-sbf` is a no-op marker used by CI to select on-chain tests.
+test-sbf = []
+
+[dependencies]
+pinocchio = "=0.9.3"
+pinocchio-system = "=0.4.0"
+pinocchio-token = "=0.4.0"
+pinocchio-associated-token-account = "=0.2.0"
+pinocchio-pubkey = "=0.3.0"
+pinocchio-log = "0.5.1"
+solana-nostd-keccak = "0.2.0"
+solana-nostd-sha256 = "0.2.0"
+borsh = { version = "1", default-features = false, features = ["derive"] }
+
+## No dev-dependencies right now. mollusk-svm/solana-sdk were declared here but
+## never actually used by any test (only mentioned in a doc comment) -- and
+## mollusk-svm transitively forces openssl's `vendored` feature (via
+## agave-precompiles -> solana-secp256r1-program's `openssl-vendored` feature,
+## needed for secp256r1 precompile simulation), which requires a full Perl
+## toolchain (FindBin, IPC::Cmd, Time::Piece...) to build OpenSSL from source.
+## Re-add mollusk-svm only when a test actually needs it (e.g. the planned
+## refund_expired Clock-simulation test), and fix the Perl gap with
+## `cpanm --local-lib` at that point rather than system-wide.
+[dev-dependencies]
+mollusk-svm = "0.14.0"
+mollusk-svm-programs-token = "0.14.0"
+solana-account = "4.3.1"
+solana-clock = "3.1.1"
+solana-instruction = "3.4.0"
+solana-program-error = "3.0.1"
+solana-program-option = "3.1.0"
+solana-program-pack = "3.1.0"
+solana-pubkey = "4.2.0"
+solana-rent = "4.3.0"
+solana-system-interface = "3.2.0"
+spl-token-interface = "2.0.0"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+panic = "abort"

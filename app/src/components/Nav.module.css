@@ -1,0 +1,56 @@
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.85rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.logo {
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  font-size: 1.15rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.links {
+  display: flex;
+  gap: 1.25rem;
+  margin-left: auto;
+}
+
+.links a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.links a:hover {
+  color: var(--text);
+}
+
+.wallet {
+  margin-left: 0.5rem;
+}

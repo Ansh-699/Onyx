@@ -1,0 +1,559 @@
+# ONYX — Shared Build State (source of truth for all agents)
+
+> Single coordination doc. Every subagent reads this before writing code and
+> appends its outputs here. Verified facts are tagged [VERIFIED]; assumptions [ASSUMPTION].
+
+## Runtime & tooling (locked)
+- **Runtime: Bun** (`bun install`, `bunx`, `bun run`, `bun test`). Commit `bun.lock`. [VERIFIED bun 1.3.14]
+- **Deps: latest stable**, EXCEPT pin exact for ABI-sensitive pieces:
+  - MagicBlock `ephemeral-rollups-sdk` **=0.14.3** (Rust) / `@magicblock-labs/ephemeral-rollups-sdk` **=0.14.3** (TS)
+  - Anything byte-matching `txoracle.json` (mirror IDL exactly).
+- Toolchain present: Solana 3.1.14, Anchor 1.0.1, Rust 1.96.1, jq 1.8.1. [VERIFIED]
+- Build in place under `onyx/`. [DONE]
+
+## TxLINE facts (verified against txodds/tx-on-chain + live docs)
+- Hosts: devnet `https://txline-dev.txodds.com`, mainnet `https://txline.txodds.com`. NEVER cross-activate. [VERIFIED]
+- **3-step auth** [VERIFIED, implemented in services/ingestion/src/auth.ts]:
+  1. `POST /auth/guest/start` -> `{ token }` (JWT, 30d)
+  2. on-chain `subscribe(serviceLevelId u16, weeks u8)` via txoracle (free tier = 0 cost; weeks multiple of 4)
+  3. `POST /api/token/activate { txSig, walletSignature(base64 nacl over `${txSig}:${leagues.join(",")}:${jwt}`), leagues }` -> apiToken
+  - Data calls send BOTH `Authorization: Bearer <jwt>` and `X-Api-Token: <apiToken>`.
+- Endpoints [VERIFIED from reference scripts]:
+  - `GET /fixtures/snapshot?competitionId=&startEpochDay=`
+  - `GET /odds/snapshot/{fixtureId}` · `GET /odds/stream` (SSE)
+  - `GET /scores/snapshot/{fixtureId}` · `GET /scores/stream` (SSE)
+  - `GET /scores/stat-validation?fixtureId=&seq=&statKeys=`  <- settlement proof payload
+- **Timestamps are MILLISECONDS.** `epochDay = floor(ts_ms / 86_400_000)`. [VERIFIED]
+- Subscription mint is **Token-2022** TxL (devnet `4Zao8ocPhmMgq7PdsYWyxvqySMGx7xb9cMftPMkEokRG`). Betting escrow mint is a SEPARATE choice (USDC-classic fine). [VERIFIED]
+
+## txoracle program (IDL v1.5.5, saved to onyx/idl/txoracle.json) [VERIFIED]
+- Devnet program: `6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J`
+- Mainnet program: `9ExbZjAapQww1vfcisDmrngPinHTEfpjYRWMunJgcKaA`
+- `validate_stat` disc `[107,197,232,90,191,136,105,185]`, ONE ro account `daily_scores_merkle_roots`, returns `bool`.
+  - args: `ts:i64, fixture_summary:ScoresBatchSummary, fixture_proof:Vec<ProofNode>, main_tree_proof:Vec<ProofNode>, predicate:TraderPredicate, stat_a:StatTerm, stat_b:Option<StatTerm>, op:Option<BinaryExpression>`
+- `validate_stat_v2` disc `[208,215,194,214,241,71,246,178]`: `payload:StatValidationInput, strategy:NDimensionalStrategy` -> bool (n-dimensional; good for parlays).
+- **Daily-roots PDA seed: `["daily_scores_roots", epochDay as u16 LE]`** (NOTE: seed string differs from the IDL account arg name `daily_scores_merkle_roots`). [VERIFIED from reference script]
+- Roots posted on 5-min boundaries. Error 6007 RootNotAvailable = transient (retry), NOT a loss.
+- Key types (exact):
+  - `ProofNode { hash:[u8;32], is_right_sibling:bool }`
+  - `ScoreStat { key:u32, value:i32, period:i32 }`  (period is its OWN field, not folded into key)
+  - `ScoresBatchSummary { fixture_id:i64, update_stats:ScoresUpdateStats{update_count:i32,min_timestamp:i64,max_timestamp:i64}, events_sub_tree_root:[u8;32] }`
+  - `StatTerm { stat_to_prove:ScoreStat, event_stat_root:[u8;32], stat_proof:Vec<ProofNode> }`
+  - `TraderPredicate { threshold:i32, comparison: GreaterThan|LessThan|EqualTo }`
+  - `BinaryExpression: Add|Subtract`
+- **Comparison set is only GT/LT/EQ; BinaryExpression only Add/Subtract.** ONYX spec's GTE/LTE/PARITY ops do NOT exist upstream — drop or remap them.
+
+## MagicBlock facts (verified via installed skill + live status API 2026-07-08) [VERIFIED]
+- Devnet ER live; **devnet TEE node `devnet-tee-as.magicblock.app` live (er:true)**.
+- Base RPC `https://rpc.magicblock.app/devnet`; router `https://devnet-router.magicblock.app/`; ER endpoint from router `getDelegationStatus.fqdn`.
+- Program IDs: Delegation `DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh`, Magic `Magic1111...`, MagicContext `MagicContext111...`, Permission(PER) `ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1`, Ephemeral SPL Token `SPLxh1LVZzEkX99H6rqYizhytLWPZVV296zyYDPagv2`.
+- SDK 0.14.3: `#[ephemeral]`+`#[delegate]`+`#[commit]`; `MagicIntentBundleBuilder` for commit/undelegate (free fns deprecated). PER via `access-control` feature.
+
+## Architecture (locked scope: MagicBlock core + Pinocchio + parlays/MEV)
+- L0 Solana L1: escrow PDAs, settle via CPI validate_stat, verifiable receipt. Trust root; settlement NEVER in a rollup.
+- L1 MagicBlock ER: delegate market/position at kickoff for ~10ms in-play; commit+undelegate at end.
+- L2 MagicBlock PER (TEE): shielded bet side/size; MEV-proof sealed-bid batch.
+- L3 sauce: on-chain parlays (per-leg validate_stat) + MEV-proof demo.
+- Escrow mint: devnet USDC-classic (separate from TxL Token-2022 sub mint).
+
+## Repo layout (in place under onyx/)
+```
+onyx/
+  idl/txoracle.json + idl/types/txoracle.ts   [DONE]
+  programs/onyx/           Pinocchio program   [TODO]
+  clients/ts/              generated/handwritten client [stub]
+  services/
+    ingestion/             TxLINE auth+scores+fixture [DONE, phase0]
+    indexer/ keeper/ backend-api/ batch-coordinator/  [TODO]
+  app/                     Next.js frontend    [stub]
+  fixtures/                captured proofs      [written by phase0]
+  vendor/tx-on-chain/      reference (gitignored)
+```
+
+## Status log
+- [DONE] Phase 0 auth step-1 live-verified (276-char JWT from devnet). Ingestion typechecks clean.
+- [DONE] txoracle IDL v1.5.5 + TS types vendored into idl/.
+- [DONE] Fixed pinocchio-family version mismatch (Cargo.toml pinned 0.11.2 against
+  0.9.x-API code); pinned pinocchio=0.9.3 + matching pinocchio-system/token/ata.
+  `cargo check`: 0 errors. `cargo build-sbf`: produces target/deploy/onyx.so.
+- [DONE] Full 3-step TxLINE auth verified end-to-end on devnet (not just step 1):
+  fixed auth.ts using the IDL's embedded MAINNET address instead of the devnet
+  TXORACLE_PROGRAM_ID, fixed a Bun fetch zstd-decoding failure on
+  /api/token/activate, fixed activate() assuming a JSON body when the endpoint
+  returns a bare plain-text token. Real `subscribe` tx landed on devnet:
+  52QN28ZCQPagb59UUqhPek1dvDCmc4zGM5GnF73HuNkRWEFXSyLrCf37qZurJwrpznWuLgU4WHNBKtxqULrhuFW4
+- [DONE] Real validate_stat proof fixture captured -> fixtures/scores-validation.sample.json
+  (fixtureId 18179550, seq 1315, epochDay 20635).
+- [DONE] onyx.so deployed to devnet at the canonical program id (matches
+  declare_id! in lib.rs, deployed via the committed onyx-keypair.json so the
+  address never drifts on rebuild):
+  **ONYX_PROGRAM_ID = 4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB**
+  Deploy tx: 63rUWimMTx7Kpa2nXa77QcmnfdXsbr3aqj6UE6GgH5JHhGmDZ6em1ZzHARzPVp5PExqrpcryVBhmHQTWeNRcd17W
+- [DONE] Found + fixed a second real bug via the devnet integration test itself:
+  entrypoint.rs declared `no_allocator!()`, which panics on ANY heap alloc.
+  Invisible on open_market/join_market/etc (fixed-offset byte slicing only),
+  but settle_market builds a `Vec<ProofNode>` + borsh-encodes the CPI payload,
+  which allocates. Caught live: panic at pinocchio entrypoint/mod.rs:681 after
+  only 327 CU (before reaching our dispatcher). Fixed -> `default_allocator!()`
+  (bump allocator). Binary grew 64KB -> 75KB; redeployed at the same program id.
+- [DONE] **L0 LOOP GREEN END-TO-END ON DEVNET — Phase 1 exit criterion met.**
+  initialize_config -> open_market -> join_market(sideA) -> join_market(sideB)
+  -> settle_market (REAL CPI into the live txoracle program, using the real
+  captured proof fixture) -> claim, all executed and confirmed on devnet.
+  Program: 4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB
+  settle_market tx: 5a4scCzjPPgVovtpz9mEfpLBXS1XCWMA6ZGdpZAmLjQZyd9PRCAjbqosNpRywkT4MAejQu5EyTqNe2fUeSBte6s4
+  On-chain logs from the REAL txoracle program (6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J):
+    "Instruction: ValidateStat" / "Pass fixture-level validation" /
+    "Perform single-stat predicate validation" / "Evaluate predicate to: true"
+  Return data: 0x01 (true). ONYX settle_market mapped this to OUTCOME_SIDE_A,
+  status -> Settled. Winner then claimed via `claim`: balance 980000000 ->
+  999900000 (+19900000, i.e. stake 10.0 + winnings 10.0 - 1% fee 0.1 = 19.9,
+  matching the parimutuel payout formula in claim.rs exactly).
+  Test script: services/ingestion/src/l0_loop_test.ts.
+  Escrow token used: a devnet test SPL mint created for this test (not real
+  devnet USDC) — config.usdc_mint is a permanent singleton once set, so
+  swapping to real devnet USDC before final submission requires a fresh
+  program deploy + re-init (cheap; the settlement logic doesn't care which
+  mint). See mint HmXznVLzmCH5DUysWQKQ9DFWCSB66eArRthZP1ft8Nai.
+- [DEFERRED] refund_expired not exercised live on devnet: it requires
+  `now > deadline + SETTLE_GRACE` (2h), impractical to wait out interactively.
+  Logic reviewed by hand; plan to cover it with a mollusk-svm host-side unit
+  test (simulated Clock) once that dep is reintroduced (see below).
+- [DONE] `cargo test` fixed at the root cause, no system/root changes needed.
+  It was never a Perl problem: mollusk-svm/solana-sdk were declared as
+  dev-dependencies but unused by any actual test, and mollusk-svm transitively
+  forces `openssl`'s `vendored` feature (agave-precompiles ->
+  solana-secp256r1-program's `openssl-vendored`, for secp256r1 precompile
+  simulation) — which needs a full Perl toolchain to build OpenSSL from
+  source, and this box's Perl is missing FindBin/IPC::Cmd/Time::Piece.
+  Removed the unused dev-dependencies entirely: `cargo test` now runs with
+  zero Perl/OpenSSL involvement, no root/PERL5LIB needed. 12/12 host tests
+  pass. mollusk-svm will be reintroduced only when a test actually needs it
+  (the refund_expired Clock test above); at that point use
+  `cpanm --local-lib="$HOME/perl5" Time::Piece` (C toolchain already present)
+  rather than a system package install.
+- [DONE] **L1 MagicBlock ER PROVEN END-TO-END, NATIVE PINOCCHIO (no Anchor).**
+  This was the biggest remaining technical unknown (the whole
+  `ephemeral-rollups-sdk` + delegation skill is Anchor/solana-program-typed;
+  our program is native `no_std` pinocchio). Reconstructed the exact byte-level
+  CPIs from `magicblock-delegation-program-api` v3.0.0 +
+  `magicblock-magic-program-api` v0.10.1 and implemented them natively:
+  - `delegate_market` (disc 3, base): buffer the market, zero + reassign it to
+    the Delegation Program, CPI Delegate (disc `[0u8;8]` + borsh
+    DelegateAccountArgs), close buffer. `cpi/delegation.rs` + `instructions/`.
+  - `undelegate_market` (disc 4, ER): CPI the Magic Program
+    `ScheduleCommitAndUndelegate` (bincode variant `[2,0,0,0]`). NOTE: the
+    committed account MUST be writable — a first attempt passed it read-only and
+    the magic program rejected it ("required to be writable and delegated");
+    fixed.
+  - `touch_market` (disc 8): minimal OPEN->LIVE mutation, used to prove ER
+    execution (only mutates when the market is program-owned = on the ER).
+  - `process_undelegation` (callback, disc `[196,28,41,206,48,37,51,167]`):
+    re-creates the PDA from the undelegate buffer + restores committed state.
+    Its exact account layout isn't in the public api crates — recovered it
+    empirically from a real failed devnet finalize tx: accounts
+    `[delegated(w), undelegate_buffer(w,signer), validator/payer(signer), system]`,
+    data = disc + borsh(Vec<Vec<u8>> = the PDA's own seeds).
+  - **[PINNED — housekeeping, 2026-07-09] Exact ground-truth bytes**, decoded
+    from the raw base58 inner-instruction data of finalize attempt
+    `5jzgeQhcU2p9iCpCvDhSsqA2khvTj1yyJRZUCwwN5acjM94d14htbZEPNrq7dV6qnFVxfaqpoenBe2W82AvuWYP1`
+    (slot 474881922, devnet; instruction 3 = Delegation Program's own
+    finalize ix `[3,0,0,0,0,0,0,0]`, whose CPI into ONYX at stackHeight 2
+    failed `invalid instruction data` — this predates `process_undelegation`
+    existing, and is the exact failure that revealed the interface).
+    Fetched via `getTransaction` (encoding `json`) → `meta.innerInstructions`,
+    the entry with `programIdIndex` = ONYX:
+    - accounts (indices into the tx's account list) = `[5, 6, 0, 8]` =
+      `[market(CxYGwZucBH4AtW8CZ558wcKFuuvHNB4HHKMr67hVTnVu) W,
+      undelegate_buffer(GJPYcJXT1A5Y9vf3drraJJPT2quUhxPHoypxPu6JQtaz) W,
+      payer/validator(MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57) — fee
+      payer of the outer tx, System Program]` — confirms the 4-account
+      layout exactly, in this order.
+    - data (70 bytes total), hex:
+      `c41c29ce302533a703000000060000006d61726b65740800000002e9a4350000000
+      020000000efa9908953661792322ecdfe8d94af3b16c5e307668d67ee6c33a7004cd
+      2c8bf`, parsed field-by-field:
+      - `[0..8]`   = `c4 1c 29 ce 30 25 33 a7` = `EXTERNAL_UNDELEGATE_DISCRIMINATOR`
+      - `[8..12]`  = `03 00 00 00` = u32 LE `3` (borsh `Vec` len — 3 seeds, matches Market's `["market", fixture_id, params_hash]`)
+      - `[12..16]` = `06 00 00 00` = u32 LE `6` (len of seed 0)
+      - `[16..22]` = `6d 61 72 6b 65 74` = ASCII `"market"` (seed 0)
+      - `[22..26]` = `08 00 00 00` = u32 LE `8` (len of seed 1)
+      - `[26..34]` = `02 e9 a4 35 00 00 00 00` = u64 LE `900000002` (seed 1 = fixture_id — confirms this tx was against throwaway fixture 900000002)
+      - `[34..38]` = `20 00 00 00` = u32 LE `32` (len of seed 2)
+      - `[38..70]` = `ef a9 90 89 53 66 17 92 32 2e cd fe 8d 94 af 3b 16 c5 e3 07 66 8d 67 ee 6c 33 a7 00 4c d2 c8 bf` (seed 2 = that market's `params_hash`)
+      This byte-for-byte matches the implementation in `process_undelegation.rs`
+      (disc check, `read_u32` seed-count/len parsing, `MAX_SEEDS=6`) with zero
+      slack — nothing inferred, everything read directly off a real tx.
+    - **Version pins this interface depends on** (a MagicBlock upgrade to any
+      of these could silently change the callback contract):
+      `ephemeral-rollups-sdk` **0.14.3**, `magicblock-delegation-program-api`
+      **3.0.0**, `magicblock-magic-program-api` **0.10.1** (crates.io, not
+      vendored — fetched to scratchpad for reference, not a repo dependency
+      since the CPIs are hand-rolled). On-chain: Delegation Program
+      `DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh`, Magic Program
+      `Magic11111111111111111111111111111111111111`, Magic Context
+      `MagicContext1111111111111111111111111111111` (all devnet-verified
+      live, 2026-07-08). If any devnet redeploy of the Delegation Program
+      changes `EXTERNAL_UNDELEGATE_DISCRIMINATOR` or this account/data shape,
+      the undelegate round-trip will fail loudly (`InvalidInstructionData`
+      from our own dispatcher, or a PDA mismatch) — it cannot silently
+      corrupt state, since `process_undelegation.rs` re-derives and checks
+      the PDA before writing anything.
+  Proven on a THROWAWAY market (fixture 900000003, never the L0 market):
+    delegate tx  42NoN3evZQKvEbYeigRZfwLF3EBHSJjoZVWCH9LkANy3smmCWreyP1ANrCQ24ijxh1VemKF4URzDnB9HxD9ibhP5
+    touch tx(ER) 3B3wDyNB7rVhCmHvLdXfiLVtAfQmL2PDZDueKsTTnNDauKDy738rCXVB8mim1EVro8fAEgmVYdmZoPesbHyHvHZy  (status 1->2 on the ER)
+    undelegate   2g8BpiAjMUn6PW9qksd2c4Qvite1DUnAnpHCwnjcvKZowv3krdHZNHNpmPEJr1TbGDayCYQThi5EkVsaPPoPhTVi
+    finalize     65xem... (err=None; my process_undelegation callback ran)
+  Verified: market owner base ONYX -> Delegation Program -> back to ONYX; router
+  getDelegationStatus isDelegated=true w/ fqdn devnet-as; account cloned into
+  the ER owned by ONYX; and the ER-side OPEN->LIVE change PERSISTED back to L1
+  (base account status byte = 2 after finalize) — i.e. state genuinely
+  committed from the ER to base. Settlement was NEVER moved to the ER (L0
+  settle_market untouched; the L0 program upgrade is purely additive — 12/12
+  host tests still pass, existing markets still decode).
+  Test harness: services/ingestion/src/er_delegate_test.ts.
+  Devnet endpoints used: base rpc.magicblock? no — standard devnet RPC for
+  delegate/base, router https://devnet-router.magicblock.app/, ER
+  https://devnet-as.magicblock.app/ (from getDelegationStatus.fqdn).
+  Note: earlier throwaway markets 900000001/900000002 are stuck delegated
+  (from the pre-fix read-only undelegate attempts) — disposable, left as-is.
+  **[Housekeeping confirmation, 2026-07-09]** Re-verified all three on-chain,
+  fresh, via `solana account <pubkey>`: 900000001 and 900000002 (`CxYGwZuc...`)
+  are still owned by `DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh` (expected —
+  pre-fix, permanently stuck, disposable). 900000003 (`9prh2ttKFPFCZ7MjoNi6L
+  P73sDS4ASV6y49CB6E5Nwc5`) — the one run entirely under the fixed code (both
+  the writable-account fix and the `process_undelegation` callback) — is owned
+  by `4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB` (ONYX), confirming the
+  round-trip is durable, not a one-time artifact of the test run. The
+  writable-account fix is verified on a real fresh market and safe to rely on
+  for the demo.
+
+- [DONE] **L1 MagicBlock PER/TEE DE-RISK SPIKE — GO on access-control,
+  FALLBACK on shielded matching.** Strict probe (per plan, no
+  batch-coordinator built). Two concrete, real-evidence results:
+
+  **1. TEE attestation — fully verified, real Intel DCAP chain, live devnet
+  TEE node (`devnet-tee-as.magicblock.app`).** Fetched a fresh quote via
+  `GET {node}/quote?challenge=<base64 64 random bytes>` (this endpoint lives
+  on the ER validator node itself, not on any MagicBlock-hosted verification
+  service — confirmed by reading `ephemeral-rollups-sdk`'s `ts/kit/src/
+  access-control/verify.ts`). Verified with `@phala/dcap-qvl` 0.5.2
+  (`getCollateralAndVerify`, PCCS `https://pccs.phala.network`): quote is a
+  genuine Intel TDX quote (version 4, tee_type `0x81`), full DCAP chain
+  verification against Intel's PKI succeeded, **TCB status `UpToDate`**,
+  zero advisory IDs. Freshness/anti-replay binding independently confirmed
+  by manually parsing the TD10 report body (`report_data` = bytes
+  `[568..632]` of the raw quote) and checking it equals the exact 64-byte
+  challenge sent — `true`, byte-for-byte. This is real attestation, not a
+  format check: the DCAP verifier call took ~3-5s and hits Intel's actual
+  certificate-chain trust path via Phala's PCCS mirror. Script:
+  `scratchpad/dcap-verify/verify.mjs` (not in repo — reference only, uses
+  no secrets).
+
+  **2. PER access-control ergonomics from native Pinocchio — YES, proven.**
+  New instruction `create_market_permission` (disc 14, EXPERIMENTAL,
+  `instructions/create_market_permission.rs`) CPIs into MagicBlock's
+  Permission Program (`ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1`,
+  `access_control` module of `ephemeral-rollups-sdk` 0.14.3) using the exact
+  same PDA-signer pattern as `cpi_delegate`: `CreatePermission` discriminator
+  = Borsh `u64` LE `0` (8 zero bytes — coincidentally identical to
+  `DLP_DELEGATE_DISC` but a different target program), data = disc ||
+  Borsh(`Option<Vec<Member>>`), accounts `[permissioned_account(signer via
+  PDA seeds), permission(w), payer(w,signer), system_program]`. New
+  `cpi/permission.rs::cpi_create_permission`. Tested on a fresh throwaway
+  market (fixture 900000004, `FpUtA9ZjjExoxaj5cWW9uJioLSsByb8wC4LVmWEjQi46`
+  — never the L0 or ER markets):
+    create_market_permission tx `3k8fwyAGcXuvjPjaQHu9vcug6gGQCGCUA3hJyaVALmrxTB29UsH2REWbzCkwZNBNjAevhtowgDKo7KDZ2r1DGXTU`
+  Read back and decoded the resulting Permission account
+  (`AsvWBokB1yGAYvYWX8xfvAesiHa9fu8Hm34MQDWwaCBW`) directly via raw bytes:
+  owned by the Permission Program ✓, `permissioned_account` == our market
+  PDA ✓. **Empirical finding not in any doc**: the Permission Program
+  auto-prepends an implicit member for the owning program itself
+  (`{flags:0, pubkey: ONYX program}`) BEFORE the caller-supplied member list
+  — we submitted one member (`{flags:AUTHORITY(1), pubkey: admin wallet}`)
+  and the account ended up with two: `[{flags:0, ONYX}, {flags:1, admin}]`.
+  This is sensible behavior (the owning program always retains access to its
+  own delegated PDA) and directly answers unknown #1: **yes, our program can
+  cleanly gate a PDA it owns to a fixed member list from native Pinocchio,
+  with the same CPI-with-PDA-signer ergonomics already proven for plain ER.**
+  `DelegatePermission` (routing the Permission account itself onto the ER,
+  the second step of MagicBlock's "atomic delegate" pattern) was
+  **deliberately not implemented** — out of scope for this probe (needs
+  buffer/delegation-record/delegation-metadata PDAs derived under the
+  Permission Program as owner, a materially bigger reconstruction task; see
+  scope box below). Test harness: `services/ingestion/src/per_spike_test.ts`.
+
+  **3. Shielded SPL/USDC (Private Payments API) — partial, real signal, NOT
+  demo-ready as an ONYX-integrated flow.** `https://payments.magicblock.app`
+  is a live, separate hosted REST service (not part of the SDK/on-chain
+  program surface) that builds unsigned transactions for confidential SPL
+  transfers; it does support `cluster=devnet` and does move real SPL tokens
+  (not just non-token state). Live-probed (read-only, no funds moved):
+    `GET /health` -> `{"status":"ok"}`
+    `GET /v1/spl/challenge?...cluster=devnet` -> real challenge string
+      (labeled `"MOCK: Login to Query Filtering Service"` in the response
+      itself — devnet auth runs in a documented mock mode, not production
+      auth; worth knowing before demoing this as "real" auth)
+    `GET /v1/spl/is-mint-initialized?mint=<devnet USDC-equivalent>&cluster=devnet`
+      -> `{"initialized": true, "validator": "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57", ...}`
+      — the same validator identity that appears as fee-payer/validator in
+      our own ER finalize transactions (task 7), i.e. one consistent devnet
+      MagicBlock validator across both surfaces.
+  **Did not** execute an actual deposit/transfer (real value movement on a
+  third-party-hosted service, out of scope for a read-evidence probe without
+  explicit sign-off). **Critical protocol-level finding** (from reading the
+  full `ephemeral-rollups-sdk` `spl/` module source): there is **no generic
+  "submit encrypted data, validator decrypts it, your own program's logic
+  matches it inside the enclave" primitive**. The only validator-side
+  decrypt-in-TEE mechanism (`dlp_api::encryption::encrypt_ed25519_recipient`,
+  ed25519-as-X25519 encryption to the validator's identity key) is baked
+  specifically into MagicBlock's own `SchedulePrivateTransfer` /
+  `DepositAndDelegateShuttle...WithMergeAndPrivateTransfer` instructions for
+  routing token destinations — it is not exposed as a facility any
+  third-party program (including ONYX) can invoke for arbitrary order data.
+  Wiring real confidential USDC into ONYX's own matching engine would mean
+  adopting MagicBlock's entire Ephemeral SPL Token account graph (eATA per
+  user, global vault, transfer queue, Hydra crank) as the settlement asset
+  model — a materially larger integration than "reuse the commit path",
+  not something to start mid-hackathon on an unproven premise.
+
+  **GO/FALLBACK VERDICT: FALLBACK.** Two yes/no unknowns:
+    - PER access-control ergonomics from native Pinocchio: **YES** (proven,
+      real tx + decoded on-chain account, see #2 above).
+    - Shielded SPL/USDC demo-ready on devnet: **NO, not as an
+      ONYX-integrated flow** — the infra exists and is live (#3 above), but
+      "confidential order execution decrypted and matched inside our own
+      program's logic" is not a capability MagicBlock exposes generically,
+      and wiring their separate token-custody model into ONYX's matching
+      engine is out of scope for the time remaining.
+  Per the plan's explicit instruction ("do not fake privacy in the demo —
+  same discipline as the Merkle leaf"): the demo should claim exactly what's
+  proven — a MEV-proof sealed-bid batch on a **real, attested TEE-backed ER**
+  (orders sealed until batch close, protected by hardware TEE process
+  isolation + Permission-Program-gated reads, with a genuine, judge-
+  verifiable DCAP attestation quote as the trust anchor), settlement
+  transparent on L1 via the already-proven L0 loop. Scope the claim as
+  **"shielded order intent, transparent settlement"** — not "confidential
+  USDC" and not "in-program decryption." This is honest, still a strong
+  differentiator (a live, cryptographically-verified TEE attestation is not
+  something most hackathon entries will have), and requires no further
+  protocol reverse-engineering to demo safely.
+
+- [DONE] **PHASE A: Private Payments custody analysis — NO-GO** on wiring
+  MagicBlock's confidential (SchedulePrivateTransfer) routing into ONYX's
+  fund-custody/payout path. Read the real on-chain `ephemeral-spl-token`
+  program source (pinned commit `0e41986...`), not just SDK builders:
+  confidential fund routing is decrypted+executed by the Delegation
+  Program's own logic once a `shuttle` account is delegated onto a
+  TEE-backed ER — not by anything ONYX-verifiable, and not re-checked
+  against `validate_stat`'s outcome at execution time. Breaks I-Custody
+  for the confidential leg. Plain (non-confidential) deposit/withdraw is
+  ordinary, publicly-verifiable program logic and does NOT have this
+  problem, but delivers no privacy. No integration code written. Full
+  detail: `PRIVATE_PAYMENTS_CUSTODY_ANALYSIS.md`.
+
+- [DONE] **SEALED ORDER INTENT (Level 1, O7) — PROVEN END-TO-END ON
+  DEVNET.** Commit-reveal MEV-proof batch match, native Pinocchio, zero
+  MagicBlock dependency, zero confidential-USDC. Five new instructions
+  continuing the disc registry (15 open_market_sealed, 16
+  submit_sealed_order, 17 reveal_order, 18 run_batch_match, 19
+  refund_unrevealed), one new account (`SealedOrder`, disc 4, 160 bytes),
+  and a Market extension (commit_end_ts/reveal_end_ts/phase/clearing_price
+  carved out of what was previously pure `_reserved` padding at offsets
+  102-127 — MARKET_LEN unchanged at 128, zero risk to any market opened
+  before this change). Full spec in the Impl Spec doc §5.8, §7.13-7.17,
+  §12a, §15.4 — this section is the proof log.
+
+  **Design decision**: ONYX's markets are parimutuel pools
+  (`total_side_a`/`total_side_b`), not a priced order book, so
+  `limit_price` is a **batch-admission threshold**, not a locked payout
+  rate. Once `run_batch_match` decides `matched_size`, that volume becomes
+  an ordinary `Position` — the exact same PDA and fields `join_market`
+  already produces — and settles through the completely unmodified
+  parimutuel formula in `claim`. This is what let `settle_market`/`claim`
+  stay byte-for-byte untouched (verified: git diff shows zero changes to
+  either file).
+
+  **Matching algorithm** (`programs/onyx/src/matching.rs`) is a pure,
+  host-unit-tested function, independent of any account/CPI plumbing:
+  uniform clearing price = the smallest candidate price maximizing crossed
+  volume (deterministic and order-independent by construction — no
+  time-priority, ever); pro-rata fill on the long side; integer-division
+  dust redistributed one unit at a time by ascending commitment-hash bytes
+  (the spec's exact tie-break rule). 7 host tests including a worked
+  numeric example and an explicit `order_independence` test (same orders,
+  three different input orderings, bit-identical result — this is what
+  actually proves "no order benefits from ordering," more rigorously than
+  any single on-chain run could).
+
+  **Two real bugs found and fixed by actually running it on devnet**
+  (not just trusting the host build): (1) `run_batch_match` was missing
+  the System Program account — the `CreateAccount` CPI for a
+  freshly-matched order's `Position` needs it discoverable in the calling
+  instruction's account list; failed with `MissingAccount`. (2)
+  `run_batch_match` and `refund_unrevealed` both held a `TokenAccount`
+  borrow (from the refund-destination ownership check) open across the
+  `Transfer` CPI touching the same account, panicking with
+  `AccountBorrowFailed`; fixed by scoping the check to drop the borrow
+  first — the same pattern `claim.rs` already used for its vault-balance
+  check, which I should have followed from the start.
+
+  **Proven on a THROWAWAY market** (fresh fixture id each run, never the
+  L0/ER markets), two throwaway bettor keypairs funded fresh from the
+  admin wallet (which is the devnet test-USDC mint authority):
+  worked example — A1(side A, size 100, limit 70), A2(side A, size 200,
+  limit 60, same owner as A1, different nonce), B1(side B, size 90, limit
+  50). Devnet result matched the hand-computed prediction exactly:
+    clearing_price = 50, matched_size = [30, 60, 90], total_side_a/b = 90/90
+    Position(bettorA) = {side: A, amount: 90}  <- A1+A2 correctly MERGED
+    Position(bettorB) = {side: B, amount: 90}
+  Also proven: an order account during Commit exposes only the commitment
+  hash + collateral_locked (side/size/price fields read back as zero,
+  confirmed by decoding the raw account bytes); a wrong-preimage reveal
+  attempt is rejected with `Custom(6019)` CommitmentMismatch; a
+  deliberately-never-revealed fourth order is fully refunded via
+  `refund_unrevealed` after the reveal window closes (I-NoTrap) — its
+  owner's USDC balance came back to exactly the pre-order amount.
+  `run_batch_match` was called with its remaining_accounts in a
+  DELIBERATELY REORDERED sequence (B1, A2, A1) vs submission order, and
+  still produced the predicted result.
+  Test harness: `services/ingestion/src/sealed_order_test.ts`.
+  Redeployed by explicit program address each time
+  (`4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB`), confirming
+  `declare_id!` matches the target before every deploy — per the carry-over
+  discipline (two keypair near-misses earlier this session; the fix each
+  time was deploying by address rather than trusting the local
+  `target/deploy/*-keypair.json`, which is NOT the canonical program
+  keypair and must never be used for `--program-id`).
+
+  **Not built** (deliberately, per the plan's scope box): Level 2 (the
+  optional PER-based encrypted-envelope upgrade, §12 in the Impl Spec) —
+  only start this after the Level 1 build is confirmed solid; and
+  anything from MagicBlock's Private Payments/Ephemeral SPL Token
+  product, permanently out of scope per the Phase A NO-GO above.
+
+## Frontend (Next.js app/, Bun) [DONE — next build + tsc --noEmit both green]
+- Stack: Next 15.5 App Router + React 19 + TypeScript, plain CSS modules (no UI lib).
+  Wallet: `@solana/wallet-adapter-react` (Phantom + Solflare, **devnet**), provider in
+  `src/components/WalletProvider.tsx`; RPC override via `NEXT_PUBLIC_SOLANA_RPC_URL`
+  (defaults to `clusterApiUrl(Devnet)`).
+- Build/verify (Bun, NOT npm/node): `bun install` · `bunx tsc --noEmit` · `bun run build`.
+  Added dep `js-sha3@^0.9.3` (keccak256) + `@types/node`, `@types/react-dom`.
+- **[DONE] L0 thin slice wired to LIVE devnet data — no mocks on this path.**
+  New `src/lib/onchain.ts`: hand-rolled Market account decoder (mirrors
+  state/market.rs's 128-byte layout byte-for-byte, no Anchor IDL since this is
+  a native Pinocchio program), `listMarkets()` via `getProgramAccounts` +
+  memcmp on the disc byte, `getMarket()`, and `findSettleTx()` (scans recent
+  signatures for the one whose logs mention the oracle CPI). All three routes
+  below are now `export const dynamic = "force-dynamic"` server components
+  that read devnet on every request — runtime-verified by curling a live
+  `bun run start` and confirming the real market PDA, real settle_market tx
+  signature, and the real oracle log lines ("Evaluate predicate to: true")
+  render correctly.
+  - `/` lobby — lists real Market PDAs from devnet, grouped by fixture id.
+  - `/market/[pda]` — real on-chain status/outcome/pools for that market.
+  - `/receipt/[market]` — see below, substantially redesigned.
+  - `/create` and `/demo/mev` are explicitly OUT of scope for this slice
+    (per plan: thin slice only, no parlay/MEV screens yet) — `/create` still
+    reads `src/lib/mock.ts` for its fixture dropdown, intentionally.
+- **[IMPORTANT FINDING] The old leaf-serialization assumption is WRONG, and
+  the full multi-stage tree topology is still unknown.** Empirically tested
+  (against the real captured fixture + the real on-chain daily_scores_roots
+  account) ~15 leaf-encoding variants (byte order, field order, domain
+  separation, keccak256 vs sha3_256, with/without period, proof
+  direction/order reversed) for `leaf -> stat_proof -> event_stat_root`, and
+  4 topology hypotheses for `events_sub_tree_root/event_stat_root ->
+  fixture_proof -> main_tree_proof -> daily root`. **None matched.** The
+  fold *primitive* itself (keccak256, is_right_sibling-directed pairing) is
+  still correct/locked — confirmed byte-identical between
+  `programs/onyx/src/merkle.rs::hash_pair` and `app/src/lib/merkle.ts::hashPair`.
+  What's unconfirmed is txoracle's internal leaf pre-image byte layout and
+  how the 3 proof arrays (stat_proof, fixture_proof i.e. subTreeProof,
+  main_tree_proof) chain together — this is proprietary to txoracle and
+  isn't in the public IDL/docs. Downgraded from "[VERIFIED]" to an open
+  item; carries forward the existing O2 open item in `00 - README.md`.
+  Real unblock for this: ask in the TxODDS Discord for the leaf/tree
+  construction, or capture several more fixture samples and brute-force at
+  scale (not attempted here — time-boxed).
+  **Product impact:** the receipt page no longer claims a full independent
+  Merkle re-derivation as the trust source. It shows two things instead: (1)
+  the AUTHORITATIVE verdict, sourced from the Market account's own
+  `status`/`outcome` fields plus the real txoracle program's own log lines
+  from the settle transaction (fetched live, not hardcoded) — this is fully
+  trustless already, since anyone can pull both facts from a public RPC
+  without trusting ONYX's UI; and (2) a clearly-labeled "local re-derivation
+  attempt (experimental)" section that performs the one-hop
+  leaf->stat_proof->event_stat_root fold and honestly reports match/no-match
+  without implying the settlement itself is in question either way.
+- `src/lib/merkle.ts` (fold primitive — **locked/correct**) + leaf
+  serialization (**open**, see above):
+  - `ProofNode { hash: number[32], isRightSibling: boolean }` (mirrors IDL `proofNode`)
+  - Pair hash: `hashPair(l,r) = keccak256( concat(l, r) )` over two 32-byte hashes
+    (raw 64-byte concat, no domain-separation byte) — confirmed identical to
+    on-chain `merkle.rs::hash_pair`.
+  - Fold rule (exact, confirmed correct):
+    ```
+    verifyMerkleProof(leaf, proofPath, root):
+      acc = leaf
+      for node in proofPath:
+        acc = node.isRightSibling
+            ? keccak256(concat(acc, node.hash))   // sibling on the RIGHT
+            : keccak256(concat(node.hash, acc))   // sibling on the LEFT
+      return toHex(acc) === toHex(root)
+    ```
+  - Leaf binding: `leafFromScoreStat({key:u32, value:i32, period:i32})` =
+    `keccak256( key(u32 LE) ‖ value(i32 LE) ‖ period(i32 LE) )` (12-byte buffer).
+    ⚠ CONFIRMED WRONG (or incomplete) against the real oracle — see finding
+    above. Kept as the best-effort guess for the experimental section only.
+  - Predicate eval: GT/LT/EQ via `evaluatePredicate(value, {threshold, comparison})`.
+- Shared FE types in `src/lib/types.ts` (ProofNode, ScoreStat, TraderPredicate,
+  FixtureSnapshot, MarketSummary, ReceiptInput) — `FIXTURES`/`STAT_KEYS` from
+  `mock.ts` still back `/create`'s dropdown (no on-chain source for fixture
+  metadata exists); everything else in `mock.ts` is dead/unused. Real
+  captured proof bundled at `src/lib/fixtures/scores-validation.sample.json`
+  for the receipt page AND for real `settle_market` calls from the UI.
+
+- [DONE] **/create + the full sealed-order demo journey are wired to real
+  wallet-signed transactions — the last mock in the frontend is gone.**
+  Every write path (create market, place bet, reveal, run match, settle,
+  claim) now builds and submits a real instruction through a connected
+  wallet; nothing in the app fakes a transaction anymore.
+  - `src/lib/instructions.ts` (new): single source of truth for every
+    instruction's byte encoding — the SAME functions are called by the
+    wallet-signed UI and by a plain-keypair verification script, so the UI
+    can't silently drift from what's actually been proven on-chain.
+  - `/create`: real `open_market_sealed` tx. Defaults to fixtureId
+    `18179550` (the one with a bundled real captured oracle proof), so a
+    market created here can be genuinely settled live, not just browsed;
+    other fixtures are explicitly labeled browsing-only.
+  - `SealedOrderPanel` (market detail page, new client component): the
+    full Commit → Reveal → Matched lifecycle as live UI. Persists the
+    user's own order secret (nonce/side/size/price) to `localStorage`,
+    since — by design — it's unrecoverable from on-chain state until
+    revealed.
+  - **Liquidity**: `src/app/api/house-counter/route.ts` (new, server-only
+    Next.js route, never bundled to the client) submits a deterministically
+    opposite-side/opposite-priced sealed order from the admin wallet
+    (already the test-USDC mint authority) so a solo demo user still gets
+    a fill. Fully stateless: house parameters are a pure function of
+    `(userSide, userSize)`, recomputed identically on the submit and
+    reveal calls — no server-side session state needed.
+  - `SettleClaimPanel` (new): real `settle_market` (CPI into the real
+    `validate_stat`) + `claim` buttons, gated to fixtures with a bundled
+    proof.
+  - **Verified for real, not just typechecked**: `app/scripts/verify-flow.ts`
+    drives the exact shared instruction builders end-to-end against a live
+    `bun run dev` server, including a genuine HTTP call into
+    `/api/house-counter` (not mocked). One run: `open_market_sealed` →
+    `submit_sealed_order` → live house-counter seed → `reveal_order` (both
+    sides) → `run_batch_match`, landing on `phase=Matched` with
+    `clearing_price=100000` — exactly what the matching algorithm predicts
+    from the two orders' limit prices (user 500000 side A, house 100000
+    side B → both candidates tie at full-volume match → smallest price
+    wins → 100000). `next build` and `bunx tsc --noEmit` both clean.
+  - **Known gap, stated plainly**: this environment cannot click through
+    an actual browser wallet extension (Phantom/Solflare) — that needs a
+    human with one installed. Everything up to that final click (byte
+    encoding, PDA derivation, account plumbing, the live API route, the
+    full on-chain lifecycle) is now proven for real; only the literal
+    "click Approve in the wallet popup" step is unverified by me.

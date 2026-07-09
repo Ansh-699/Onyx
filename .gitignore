@@ -1,0 +1,21 @@
+# deps
+node_modules/
+# build
+target/
+dist/
+.next/
+# env & keys
+.env
+.env.*
+!.env.example
+_keys/
+*.keypair.json
+*keypair*.json
+*-keypair.json
+# logs / os
+*.log
+.DS_Store
+# vendored reference (kept out of our tree; re-clonable)
+vendor/
+# fixtures may contain large captured payloads; keep curated ones only
+fixtures/tmp/

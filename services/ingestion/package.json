@@ -1,0 +1,18 @@
+{
+  "name": "@onyx/ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "auth": "bun run src/auth.ts",
+    "phase0": "bun run src/phase0.ts"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "js-sha3": "^0.9.3",
+    "tweetnacl": "^1.0.3"
+  }
+}
