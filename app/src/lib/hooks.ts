@@ -75,3 +75,35 @@ export function useScore(fixtureId: number | null | undefined) {
     enabled: fixtureId !== null && fixtureId !== undefined,
   });
 }
+
+export interface ReferenceOdds {
+  fixtureId: number;
+  homePct: number | null;
+  drawPct: number | null;
+  awayPct: number | null;
+  bookmaker: string | null;
+  ts: number | null;
+  fetchedAt: number;
+  source: "txline" | "unavailable";
+}
+
+/**
+ * Real TxLINE reference odds (full-game 1X2 implied probabilities) via the
+ * server-side proxy. `source:"unavailable"` when TxLINE hasn't published
+ * odds for the fixture yet (only fixtures near kickoff have them) — show
+ * nothing in that case rather than a fabricated number. These are an
+ * external reference only, never our market's price and never settlement.
+ */
+export function useReferenceOdds(fixtureId: number | null | undefined) {
+  return useQuery<ReferenceOdds>({
+    queryKey: ["odds", fixtureId],
+    queryFn: async () => {
+      const res = await fetch(`/api/odds/${fixtureId}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`odds ${res.status}`);
+      return res.json();
+    },
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
+    enabled: fixtureId !== null && fixtureId !== undefined,
+  });
+}
