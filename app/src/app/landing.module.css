@@ -1,0 +1,326 @@
+/* Landing page — composes the global token system (globals.css).
+   8px grid throughout; one accent; generous whitespace. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- hero ---------- */
+
+.hero {
+  position: relative;
+  text-align: center;
+  padding: 72px 0 64px;
+  /* subtle accent glow, painted as a background so it can never overflow */
+  background: radial-gradient(
+    ellipse 55% 65% at 50% 0%,
+    rgba(110, 231, 255, 0.07),
+    transparent 72%
+  );
+}
+
+.heroTitle {
+  font-size: clamp(1.9rem, 4.6vw, 2.8rem);
+  line-height: 1.14;
+  letter-spacing: -0.03em;
+  font-weight: 750;
+  margin: 20px auto 16px;
+  max-width: 820px;
+  background: linear-gradient(180deg, var(--text) 55%, #b7c3e6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* the two-line lockup only helps at wide widths; let text wrap naturally on
+   narrow viewports instead of forcing an awkward rag */
+@media (max-width: 880px) {
+  .heroBreak {
+    display: none;
+  }
+}
+
+.heroSub {
+  color: var(--text-dim);
+  font-size: 1.02rem;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.ctas {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 32px;
+  flex-wrap: wrap;
+}
+
+.ctaPrimary {
+  padding: 12px 24px;
+  font-size: 0.95rem;
+}
+
+.ctaGhost {
+  padding: 12px 20px;
+  font-size: 0.95rem;
+}
+
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .liveDot {
+    animation: livePulse 2.4s ease-in-out infinite;
+  }
+  @keyframes livePulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+}
+
+/* ---------- live stat strip ---------- */
+
+.statStrip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 24px 16px 16px;
+  margin-top: 8px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
+  text-align: center;
+}
+
+.stat + .stat {
+  border-left: 1px solid var(--border);
+}
+
+.statValue {
+  font-family: var(--font-mono);
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.statUnit {
+  font-size: 0.8rem;
+  font-weight: 550;
+  color: var(--text-dim);
+}
+
+.statLabel {
+  font-size: 0.72rem;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+}
+
+.statCaption {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 0.72rem;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+/* ---------- sections ---------- */
+
+.section {
+  margin-top: 88px;
+}
+
+.sectionLabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+
+.sectionTitle {
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 24px;
+}
+
+/* ---------- pillars ---------- */
+
+.pillarGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.pillar {
+  padding: 24px;
+}
+
+.pillarTitle {
+  margin: 12px 0 6px;
+  font-size: 1.02rem;
+}
+
+.pillarBody {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* ---------- how it works ---------- */
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* connector line between step badges */
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: 44px;
+  right: -16px;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.stepNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.stepName {
+  font-weight: 650;
+  font-size: 0.95rem;
+  margin-top: 4px;
+}
+
+.stepBody {
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+/* ---------- footer note ---------- */
+
+.footNote {
+  margin-top: 88px;
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+
+.footNote p {
+  margin: 0 auto;
+  max-width: 720px;
+  text-align: center;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 880px) {
+  .steps {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .step {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 12px;
+    padding-left: 48px;
+  }
+  .stepNum {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  .stepName {
+    margin-top: 0;
+    line-height: 36px;
+  }
+  .stepBody {
+    flex-basis: 100%;
+  }
+  /* connector becomes vertical, badge-to-badge */
+  .step:not(:last-child)::after {
+    top: 44px;
+    bottom: -32px;
+    left: 17px;
+    right: auto;
+    width: 1px;
+    height: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero {
+    padding: 40px 0 48px;
+  }
+  .pillarGrid {
+    grid-template-columns: 1fr;
+  }
+  .statStrip {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 20px 16px 16px;
+  }
+  .stat + .stat {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+  .statCaption {
+    margin-top: 0;
+  }
+  .section {
+    margin-top: 64px;
+  }
+  .footNote {
+    margin-top: 64px;
+  }
+}
