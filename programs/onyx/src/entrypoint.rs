@@ -105,6 +105,29 @@ pub fn process_instruction(
         IX_WITHDRAW_TRADING => {
             crate::instructions::withdraw_trading::process(program_id, accounts, args)
         }
+        // ---- AMM outcome-token trading — additive, see
+        // docs/AMM_TRADING_DESIGN.md. Disc 29-33/35-36 base-layer, 34 ER
+        // (routed). Undelegation reuses IX_UNDELEGATE_TRADING_ACCOUNT (27)
+        // unchanged: cpi_schedule_commit_and_undelegate_many is already
+        // generic over any delegated-account list. ----
+        IX_CREATE_AMM_POOL => {
+            crate::instructions::create_amm_pool::process(program_id, accounts, args)
+        }
+        IX_OPEN_AMM_POSITION => {
+            crate::instructions::open_amm_position::process(program_id, accounts, args)
+        }
+        IX_DEPOSIT_AMM => crate::instructions::deposit_amm::process(program_id, accounts, args),
+        IX_DELEGATE_AMM_POOL => {
+            crate::instructions::delegate_amm_pool::process(program_id, accounts, args)
+        }
+        IX_DELEGATE_AMM_POSITION => {
+            crate::instructions::delegate_amm_position::process(program_id, accounts, args)
+        }
+        IX_SWAP_AMM => crate::instructions::swap_amm::process(program_id, accounts, args),
+        IX_REDEEM_AMM => crate::instructions::redeem_amm::process(program_id, accounts, args),
+        IX_WITHDRAW_LP_AMM => {
+            crate::instructions::withdraw_lp_amm::process(program_id, accounts, args)
+        }
         // 9..=13 reserved for parlay/pause.
         _ => Err(ProgramError::InvalidInstructionData),
     }

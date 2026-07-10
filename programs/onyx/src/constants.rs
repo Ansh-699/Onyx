@@ -59,6 +59,30 @@ pub const IX_RUN_BATCH_MATCH_FAST: u8 = 26; // ER
 pub const IX_UNDELEGATE_TRADING_ACCOUNT: u8 = 27; // ER
 pub const IX_WITHDRAW_TRADING: u8 = 28; // base
 
+// ---- AMM outcome-token trading (docs/AMM_TRADING_DESIGN.md) — additive,
+// attaches ONLY to plain markets (Market.phase == PHASE_NONE), zero
+// interaction with the sealed-order state machine above. Complete-set
+// accounting: 1 unit of collateral == 1 Side-A token + 1 Side-B token,
+// minted/burned in pairs; swaps are pure account-data mutation (no token
+// CPI), same ER-compatible operation class as the TradingAccount flow. ----
+pub const DISC_AMM_POOL: u8 = 6;
+pub const DISC_AMM_POSITION: u8 = 7;
+pub const SEED_AMM_POOL: &[u8] = b"amm";
+pub const SEED_AMM_POSITION: &[u8] = b"ammpos";
+
+pub const IX_CREATE_AMM_POOL: u8 = 29; // base
+pub const IX_OPEN_AMM_POSITION: u8 = 30; // base
+pub const IX_DEPOSIT_AMM: u8 = 31; // base
+pub const IX_DELEGATE_AMM_POOL: u8 = 32; // base
+pub const IX_DELEGATE_AMM_POSITION: u8 = 33; // base
+pub const IX_SWAP_AMM: u8 = 34; // ER (routed)
+pub const IX_REDEEM_AMM: u8 = 35; // base
+pub const IX_WITHDRAW_LP_AMM: u8 = 36; // base
+
+/// swap's direction arg.
+pub const SWAP_BUY: u8 = 0;
+pub const SWAP_SELL: u8 = 1;
+
 /// TradingAccount.status.
 pub const TRADING_STATUS_NONE: u8 = 0; // no open order
 pub const TRADING_STATUS_LOCKED: u8 = 1; // committed, not yet revealed

@@ -987,3 +987,57 @@ onyx/
     cases (offline-testable), (3) devnet flakiness — NOT ER capability.
     Honest trade acknowledged: sealed-batch MEV-resistance does not apply
     to AMM markets; disclosed in-product rather than glossed.
+
+## 2026-07-11 — AMM Phase A COMPLETE: math + accounts + 8 instructions + property suite — GATE 1 GREEN
+
+- **Gate 1 result: `cargo test --release` → 92 passed / 0 failed** (44
+  pre-existing sealed-flow/core tests re-run unchanged alongside, per the
+  every-gate regression discipline, + 48 new AMM tests). Swap CU measured
+  on real SBF via mollusk: **993 CU buy / 1,994 CU sell** (sell includes
+  the u128 isqrt) vs the 50k budget assertion — ~25–50× headroom.
+- **`fpmm.rs`** (pure CPMM math, host-testable like matching.rs): calc_buy
+  (mint-then-swap vs the ORIGINAL pre-mint product, ceil against the
+  trader), calc_sell (quadratic smaller root, m = (s − isqrt(s²−4bΔ))/2,
+  floored), calc_fee, isqrt_u128 (Newton + explicit correction). 16 unit
+  tests incl. no-free-lunch round-trip properties and a u128::MAX isqrt
+  boundary — which caught TWO real overflow bugs in the correction loops
+  (raw x*x near 2^64 panics; fixed with checked_mul treating overflow as
+  "> n by definition").
+- **Accounts**: AmmPool (disc 6, 176 B, `["amm", market]`), AmmPosition
+  (disc 7, 144 B, `["ammpos", market, owner]`). Market layout untouched.
+- **8 instructions wired** (discs 29–36): create_amm_pool (PHASE_NONE-only
+  gate, real SPL seed into the existing market vault), open_amm_position /
+  deposit_amm (mirrors of the proven TradingAccount pair, incl. the
+  no-market-ownership-check lesson), delegate_amm_pool /
+  delegate_amm_position (near-dups of delegate_trading_account's
+  read-seeds-from-own-layout pattern), **swap_amm** (ER class: pure data
+  mutation, owner read-only; output computed ENTIRELY on-chain from
+  reserves read at execution time — client sends only amount_in/min_out,
+  the property that makes concurrent-swap safety follow from SVM
+  writable-account serialization; min_out enforced on-chain with the
+  specific SlippageExceeded error), redeem_amm (two-leg like
+  withdraw_trading: usdc_available anytime = I-NoTrap; winning tokens 1:1
+  post-settlement; AlreadyRedeemed vs NothingToRefund distinguished),
+  withdraw_lp_amm (reserve_winning + fees to lp_owner, settled-only —
+  losing-side reserve correctly NOT the LP's).
+- **Property suite beyond per-instruction units**
+  (`amm_lifecycle_tests.rs`, real dispatch path end-to-end): two full
+  create→open→deposit→adversarially-interleaved buys+sells (both users,
+  both sides, both directions, different orderings AND different winning
+  outcomes and fee tiers per scenario)→settle→redeem×2→withdraw_lp runs.
+  The §1 solvency identity (Σusdc_available + sets_outstanding + fees ==
+  total deposited; Σtokens_X + reserve_X == sets_outstanding on BOTH
+  sides) asserted after EVERY step, vault asserted untouched by every
+  swap, and — the post-settlement tightening — **vault drains to EXACTLY
+  zero** after the final withdraw in both scenarios, plus a repeat-redeem
+  is rejected with the specific AlreadyRedeemed. One test-harness bug
+  found+fixed en route: the world map was masking mollusk's executable
+  program stubs with defaulted accounts → UnsupportedProgramId (harness,
+  not program).
+- Fallback-readiness (tightening #4) re-confirmed from last night's
+  fresh full 11-step browser proof: settle
+  `4ACVHMayu…` and withdraw_trading `2mrbpjs3q…` landed, bettor ATA
+  76.47 → 82.46 tUSDC (+5.99). Sealed flow is presentable today, as-is.
+- Next: Phase B (deploy upgrade + base-only devnet lifecycle with
+  lamport-exact vault reconciliation at BOTH checkpoints) — pending the
+  Gate 1 report-back.

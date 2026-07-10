@@ -43,6 +43,20 @@ pub enum OnyxError {
     /// A matched sealed order's side conflicts with an existing Position's
     /// side for the same (market, owner) — one position per user per market.
     PositionSideMismatch = 6025,
+    // ---- AMM outcome-token trading (fpmm.rs / amm instructions) ----
+    /// swap's computed output was worse than the caller's min_out.
+    SlippageExceeded = 6026,
+    /// A pool operation was attempted with zero reserves / zero amount.
+    InsufficientLiquidity = 6027,
+    /// create_amm_pool called on a market whose phase isn't PHASE_NONE —
+    /// AMM pools only attach to plain markets, never the sealed state machine.
+    NotPlainMarket = 6028,
+    /// redeem_amm / withdraw_lp_amm called before the market has settled.
+    NotSettled = 6029,
+    /// redeem_amm called twice on an already-redeemed position.
+    AlreadyRedeemed = 6030,
+    /// withdraw_lp_amm called twice, or by a non-lp_owner signer.
+    LpAlreadyWithdrawn = 6031,
     // ---- ONYX-internal (non-spec) codes, 7xxx range ----
     /// A supplied account did not match its expected PDA derivation.
     InvalidPda = 7000,

@@ -55,8 +55,31 @@ cancels `5aQeTD1yz…`, `2Eckv2x7r…`, `24ARamqXc…`, `uaaxKYrpu…` (full
 signatures in the probe output; all Finalized on the ER endpoint).
 
 **Verdict: the SVM account-lock model holds on the ER under real
-concurrency. Swap-shaped shared-state mutation at ~0.8–1.1s per write,
-multiple users, no lost updates.**
+concurrency — writable-account conflicts serialize; the runtime does not
+tear or interleave writes. Swap-shaped shared-state mutation at ~0.8–1.1s
+per write, multiple users, no lost updates.**
+
+**Necessary but not sufficient — flagged by the project owner, correctly.**
+A counter increment is commutative: `+1` from four wallets in any
+interleaving always sums to 4, so this probe cannot distinguish "writes
+serialize correctly" from "writes serialize, but each one might price
+itself off stale reserves read before an earlier write landed." A CPMM
+swap is neither commutative nor order-independent — its output is a
+function of whatever reserves it reads, so if the runtime allowed two
+transactions to both read the pre-swap reserves and then both write, the
+second write would silently overwrite the first's effect even though
+both instructions individually succeeded. This IS ruled out by design,
+not just by the counter probe: the swap instruction computes its output
+**entirely from the reserves it reads at execution time on-chain** — the
+client only supplies `amount_in` and `min_out`, never a pre-computed
+`amount_out` — so Solana's standard writable-account serialization
+(already evidenced by the exact 4-then-0 counter result: a true
+lost-update race would have shown a count below 4) is sufficient by
+construction *provided the implementation never trusts a client-supplied
+output*. Phase A's mollusk suite and Phase C's live ER test upgrade from
+this proxy to firing genuinely concurrent REAL swaps and auditing the
+result (§5) — the counter probe motivated the design, it doesn't
+substitute for testing the real thing.
 
 ### 0.2 Everything else ER-hostile maps onto primitives already proven this build — CITED, not re-probed
 
@@ -218,7 +241,7 @@ withdrawn(8), redeemed(1), bump(1), reserved.
 | 31 | `deposit_amm` | base | real SPL transfer → vault; credits `usdc_available` |
 | 32 | `delegate_amm_pool` | base | near-dup of `delegate_trading_account`, seeds `["amm", market]` |
 | 33 | `delegate_amm_position` | base | near-dup, seeds `["ammpos", market, owner]` |
-| 34 | `swap` | **ER** (routed) | args: side(u8), direction(u8 buy/sell), amount_in(u64), min_out(u64). Writes pool+position; market passed read-only (delegated alongside, so it exists on the ER); gates: status Open/Live and `now < deadline` |
+| 34 | `swap` | **ER** (routed) | args: side(u8), direction(u8 buy/sell), amount_in(u64), min_out(u64). Output is computed **entirely on-chain from the reserves read at execution time** — the client sends only `amount_in`/`min_out`, never a pre-computed `amount_out` — this is the property that makes concurrent-swap safety a consequence of Solana's writable-account serialization rather than a hope; tx reverts if the computed output is worse than `min_out` (slippage protection, real, enforced on-chain, not advisory). Writes pool+position; market passed read-only (delegated alongside, so it exists on the ER); gates: status Open/Live and `now < deadline` |
 | 35 | `redeem_amm` | base | §3 |
 | 36 | `withdraw_lp_amm` | base | §3 |
 | 27 (reuse) | `undelegate_trading_account` | ER | already generic over any ONYX-delegated account list — undelegates market+pool+positions (chunked if account limits require) |
@@ -242,14 +265,18 @@ repeatedly this session). The sealed-batch fallback makes the worst case
 
 | phase | days | scope | on-chain proof required |
 |---|---|---|---|
-| **A** | 1–2 | `fpmm.rs` pure math + 2 accounts + 8 instructions + mollusk suite (property tests: solvency identity across random swap sequences, rounding-favors-pool, slippage guards, CU < 50k) | `cargo test` counts + CU numbers (real SBF via mollusk) |
+| **A** | 1–2 | `fpmm.rs` pure math + 2 accounts + 8 instructions + mollusk suite: (a) solvency identity across **adversarially-ordered** swap sequences — not one happy path, many random/hostile orderings of buys+sells, proving the path-dependent math itself is correct under reordering, since a CPMM swap (unlike the counter probe) is non-commutative and its output depends on whatever reserves it reads; (b) rounding-favors-pool; (c) slippage/`min_out` reverts on every direction; (d) **a full mint→trade→settle→redeem→LP-withdraw sequence asserting the solvency identity holds EXACTLY POST-SETTLEMENT** (vault ends at the precise expected remainder, nothing stuck, nothing overdrawn) — not just mid-lifecycle; (e) CU < 50k. Sealed-flow's own 44-test suite re-run alongside, unchanged, at this gate. | `cargo test` counts (incl. sealed-flow's 44 still green) + CU numbers (real SBF via mollusk) |
 | **Gate 1** (end d2) | | math not green → **abort pivot**, fallback stands | |
-| **B** | 3 | deploy upgrade; base-only devnet lifecycle script: create→seed→2 users join→buys+sells→deadline→settle (existing live pipeline)→redeem×2→withdraw_lp, with vault reconciled **to the lamport** against the §1 identity | full sig list + balance table |
-| **C** | 4 | ER path: delegate market+pool+positions → concurrent swaps from 2 wallets on ER → undelegate-many → settle → redeem | sigs Finalized-on-ER + not-found-on-base (the standing standard) |
-| **Gate 2** (end d4) | | ER swaps failing → decide: ship AMM base-only ("ER acceleration: roadmap") vs fallback | |
-| **D** | 5–6 | UI: `/create` market-type toggle (Sealed vs AMM), `AmmTradingPanel` (live price from reserves, buy/sell with quote+slippage, position card, redeem), MarketDetail routes by pool existence, portfolio section, LP-risk + MEV-story disclosures | browser-driven proof script + screenshots (wallet-signed, per the standing standard) |
-| **E** | 7 | README/docs rewrite (positioning: "Polymarket-style continuous trading on MagicBlock ER"), regression sweep (sealed flow must still fully pass), demo prep | 8-route sweep + full sealed-flow re-proof |
+| **B** | 3 | deploy upgrade; base-only devnet lifecycle script: create→seed→2 users join→buys+sells→deadline→settle (existing live pipeline)→redeem×2→withdraw_lp, with vault reconciled **to the lamport** against the §1 identity **both mid-lifecycle AND as the final post-redemption state** (explicit standalone assertion, not implied by the script just finishing). Sealed-flow regression re-run at this gate too. | full sig list + balance table, both checkpoints |
+| **C** | 4 | ER path: delegate market+pool+positions → **N wallets fire genuinely concurrent REAL swaps (`Promise.all`, not sequential) against one live pool** → assert (1) no lost updates — every swap lands or fails cleanly, no silent drop; (2) the solvency identity holds exactly on the final reserves; (3) **no two swaps were priced off the same stale reserves** — verified by replaying the on-chain-observed landing order through the same CPMM formula off-chain and confirming it reproduces the exact final on-chain reserves (an audit, not an inference from a commutative counter) → undelegate-many → settle → redeem, solvency reconciled again post-settlement. Sealed-flow regression re-run. | sigs Finalized-on-ER + not-found-on-base (the standing standard) + the replay-audit output |
+| **Gate 2** (end d4) | | ER swaps failing (lost updates, stale-priced swaps, or solvency breaks) → decide: ship AMM base-only ("ER acceleration: roadmap") vs fallback | |
+| **D** | 5–6 | UI: `/create` market-type toggle (Sealed vs AMM), `AmmTradingPanel` (live price from reserves, buy/sell with a real quote engine reading current reserves, **user-set slippage tolerance deriving `min_out`, on-chain-enforced — no swap ships without this wired end-to-end, not just present as an unused arg**), position card, redeem, LP-risk + MEV-story disclosures. MarketDetail routes by pool existence, portfolio section. Sealed-flow regression re-run. | browser-driven proof script + screenshots (wallet-signed, per the standing standard), incl. a deliberate slippage-revert screenshot |
+| **E** | 7 | README/docs rewrite (positioning: "Polymarket-style continuous trading on MagicBlock ER"), full regression sweep (sealed flow must still fully pass — this is now the 5th time it's re-run, once per gate, not just at the end), demo prep | 8-route sweep + full sealed-flow re-proof |
 | buffer | 8–9 | devnet flakiness + demo video recording | — |
+
+**Sealed-flow regression discipline**: re-run at every gate (A/B/C/D/E),
+not deferred to Phase E alone — drift gets caught the day it's introduced,
+not on day 7 when it's expensive to trace back.
 
 **Minimal honest version** if compressed: buy+sell on base layer only,
 single seeded LP, no portfolio integration — still genuinely

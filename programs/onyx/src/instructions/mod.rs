@@ -2,16 +2,22 @@
 
 pub mod cancel_order_fast;
 pub mod claim;
+pub mod create_amm_pool;
 pub mod create_market_permission;
+pub mod delegate_amm_pool;
+pub mod delegate_amm_position;
 pub mod delegate_market;
 pub mod delegate_trading_account;
+pub mod deposit_amm;
 pub mod deposit_trading;
 pub mod initialize_config;
 pub mod join_market;
+pub mod open_amm_position;
 pub mod open_market;
 pub mod open_market_sealed;
 pub mod open_trading_account;
 pub mod process_undelegation;
+pub mod redeem_amm;
 pub mod refund_expired;
 pub mod refund_unrevealed;
 pub mod reveal_order;
@@ -21,9 +27,11 @@ pub mod run_batch_match_fast;
 pub mod settle_market;
 pub mod submit_order_fast;
 pub mod submit_sealed_order;
+pub mod swap_amm;
 pub mod touch_market;
 pub mod undelegate_market;
 pub mod undelegate_trading_account;
+pub mod withdraw_lp_amm;
 pub mod withdraw_trading;
 
 use solana_nostd_sha256::hashv;

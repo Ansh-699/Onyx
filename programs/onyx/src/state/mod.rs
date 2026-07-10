@@ -3,12 +3,16 @@
 //! integer fields are little-endian. Accessors read/write directly over the
 //! account's data slice — no deserialization / allocation.
 
+pub mod amm_pool;
+pub mod amm_position;
 pub mod config;
 pub mod market;
 pub mod position;
 pub mod sealed_order;
 pub mod trading_account;
 
+pub use amm_pool::AmmPool;
+pub use amm_position::AmmPosition;
 pub use config::Config;
 pub use market::Market;
 pub use position::Position;

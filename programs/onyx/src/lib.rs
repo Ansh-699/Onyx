@@ -13,10 +13,19 @@ extern crate alloc;
 
 pub mod constants;
 pub mod error;
+pub mod fpmm;
 pub mod matching;
 pub mod merkle;
 pub mod state;
 pub mod util;
+
+// Cross-instruction AMM lifecycle property suite (real SBF via mollusk) --
+// host-test-only, exercises the full dispatch path across create -> swap ->
+// settle -> redeem -> LP withdraw. Per-instruction tests live inside each
+// instructions/*_amm.rs file; this covers what they can't: solvency across
+// the composed sequence, post-settlement included.
+#[cfg(all(test, not(target_os = "solana")))]
+mod amm_lifecycle_tests;
 
 pub mod cpi {
     pub mod delegation;
