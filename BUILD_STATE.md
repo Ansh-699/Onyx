@@ -801,3 +801,73 @@ onyx/
   rushed patch. The classic-flow disclosure's UI warning
   (`MarketDetail.tsx`) was updated to mention this specific failure mode and
   reassure that funds aren't stuck in this exact case, pending a real fix.
+
+- [RESOLVED] **The original phase-collision hypothesis (a genuinely-revealed
+  classic order permanently stranded because the fast flow wins the match
+  race) is DISPROVEN — structurally unreachable, not just unreproduced.**
+  Two more decisive live repros, plus a full live-funds audit, settle this:
+  - **Structural reason, confirmed empirically**: `Market.phase` is a SINGLE
+    field shared by both flows, and each flow's submit/reveal instructions
+    gate on it strictly (`submit_order_fast` requires `phase==Commit`
+    exactly; `reveal_order` requires `phase==Commit || phase==Reveal`
+    exactly). If a classic order successfully reveals, that lazily flips
+    `phase` Commit->Reveal — which permanently blocks ALL further
+    `submit_order_fast` calls on that market (confirmed live: real
+    `Custom(6018)`/WrongPhase rejections on both fast-side submit attempts,
+    immediately after a classic reveal had already landed). So by the time
+    the fast flow could possibly reach a completed match, no classic order
+    on that market could have been revealed — the two preconditions
+    ("classic order revealed" and "fast flow completes a match") cannot
+    co-occur on the same market, by construction.
+  - **The temporary-block tail case, also confirmed empirically, not just
+    reasoned through**: if a classic order reveals successfully (only
+    possible pre-delegation) and someone THEN delegates the market anyway
+    (blocking classic `run_batch_match` at the runtime level the same way
+    `reveal_order` was blocked earlier), the block is temporary, not
+    permanent — undelegating (a normal, permissionless, always-eventually-
+    available step) restores base ownership and the market's true phase,
+    and classic `run_batch_match` then works exactly as designed. Proven by
+    literally doing this THREE separate times against three different real
+    revealed classic orders sitting on devnet (one from a controlled repro,
+    two recovered from this session's own accumulated test debris): each
+    time, undelegate -> `run_batch_match` succeeded and the order's full
+    collateral landed back in the owner's ATA via that same instruction's
+    own internal refund transfer (no counterparty in any of the three, so
+    `matched_size=0`, `refund=collateral_locked` in full).
+  - **Reachability of the (harmless) temporary block, precisely**: real,
+    via ordinary UI actions, no scripting — `ErTradingPanel`'s
+    `notYetDelegated` gate has zero awareness of a market's existing
+    classic `SealedOrder`s (grep-confirmed), the classic flow is presented
+    as "always available" (collapsed but fully functional, not
+    deprecated), and `/markets` lists every market for anyone to click
+    into and try either flow on. Most likely trigger in practice: a judge
+    or QA pass deliberately trying both documented flows on the same
+    market (exactly what the README invites), not the default single-flow
+    happy path a typical bettor would take.
+  - **Live-funds audit (the explicit "are funds stuck right now" check)**:
+    scanned every SealedOrder this program has ever created on devnet (36
+    total, `getProgramAccounts` + manual byte-layout decode, offsets
+    cross-checked against `onchain.ts`'s own `decodeSealedOrder`). Zero are
+    permanently stuck. 8 are revealed-and-unresolved leftovers from earlier
+    testing this session, all on markets that are NOT currently delegated,
+    all immediately rescuable by anyone calling classic `run_batch_match`
+    (permissionless). One additional order WAS found sitting on a
+    currently-delegated market (an abandoned artifact of an earlier repro
+    in this same investigation, interrupted by a transient devnet airdrop
+    faucet failure) — cleaned it up live as part of this audit: undelegated
+    the market, ran classic `run_batch_match`, watched the bettor's full
+    1,000,000 base units land back in their ATA for real. Not left as
+    stray state.
+  - **A separate, smaller gap found in the process, NOT yet fixed**: the
+    classic flow's "Reveal" and "Run batch match" buttons
+    (`SealedOrderPanel.tsx`) both surface the raw
+    `ExternalAccountDataModified` runtime string if clicked while their
+    market happens to be delegated — `SealedOrderPanel.tsx` only calls
+    `friendlyError` (never `classifyWrongLedger`), and neither has a
+    pattern for this exact string yet (only `ErTradingPanel`'s wrong-ledger
+    cases are covered). This is a UX-polish gap only — the underlying state
+    is always recoverable, per the above — same size/category as the
+    `InvalidWritableAccount` gap already found and fixed earlier this
+    session in `errors.ts`, just a different string, in a different panel.
+    Not fixed yet — flagged for a decision on priority rather than
+    unilaterally patched, consistent with "report before fixing."
