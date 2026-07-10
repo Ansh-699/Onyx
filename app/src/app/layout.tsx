@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { OnyxWalletProvider } from "@/components/WalletProvider";
 import { QueryProvider } from "@/components/QueryProvider";
 import { Nav } from "@/components/Nav";
+import { NO_FLASH_SCRIPT } from "@/components/ThemeToggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Must run before first paint to avoid a flash of the wrong theme —
+            sets data-theme from localStorage or system preference. */}
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
+      </head>
       <body>
         <QueryProvider>
           <OnyxWalletProvider>

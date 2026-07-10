@@ -1,7 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ============================================================
    ONYX design tokens — dark-first, 8px grid, one accent.
    Existing var/class names are preserved (modules depend on them);
    new tokens and primitives are additive.
+
+   Theme switching: :root carries the dark palette as the default (matches
+   the app's original dark-first design). [data-theme="light"] overrides it
+   with re-tuned values, not a blind invert — the accent, shadow opacities,
+   and glass tint all get re-picked for contrast on a light surface rather
+   than just flipped. A blocking inline script in layout.tsx sets
+   data-theme on <html> before first paint (localStorage choice, else
+   system preference), so this attribute is always present by render time
+   and Tailwind's `dark:` selector-strategy variant (see tailwind.config.ts)
+   stays in sync with it automatically.
    ============================================================ */
 
 :root {
@@ -39,10 +53,97 @@
     Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     monospace;
+
+  /* liquid-glass surface tokens (dark values — see [data-theme="light"] for
+     the light-mode re-tune). Used only on brand-moment panels (hero, primary
+     CTA, nav) — never on data/market cards, see landing.module.css header. */
+  --glass-tint: rgba(255, 255, 255, 0.045);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-highlight: rgba(255, 255, 255, 0.35);
+  --glass-shadow: rgba(0, 0, 0, 0.45);
+}
+
+/* Light mode — re-tuned, not inverted: accent goes deeper/more saturated for
+   contrast on white, dim/-tone backgrounds get lighter tints, shadows drop
+   to near-nothing (4-8% opacity), glass highlights flip from white to dark
+   specular so the frosted edge still reads against a light backdrop. */
+:root[data-theme="light"] {
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --surface-2: #f0f1f6;
+  --surface-3: #e7e9f0;
+  --border: #e2e4ec;
+  --border-strong: #c7cbdb;
+
+  --text: #14161f;
+  --text-dim: #565b70;
+  --text-faint: #8a8fa3;
+
+  --accent: #0891b2;
+  --accent-strong: #0e7490;
+  --accent-dim: rgba(8, 145, 178, 0.08);
+  --green: #16a34a;
+  --green-dim: rgba(22, 163, 74, 0.1);
+  --red: #dc2626;
+  --red-dim: rgba(220, 38, 38, 0.1);
+  --amber: #b45309;
+  --amber-dim: rgba(180, 83, 9, 0.1);
+
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px -12px rgba(15, 23, 42, 0.1);
+
+  --glass-tint: rgba(255, 255, 255, 0.16);
+  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.9);
+  --glass-shadow: rgba(15, 23, 42, 0.12);
+}
+
+/* System-preference fallback for a first-time visitor who hasn't toggled
+   yet. The blocking script in layout.tsx normally sets data-theme before
+   this could ever be visible, but this keeps things correct with JS
+   disabled too (progressive enhancement, not load-bearing). */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-2: #f0f1f6;
+    --surface-3: #e7e9f0;
+    --border: #e2e4ec;
+    --border-strong: #c7cbdb;
+    --text: #14161f;
+    --text-dim: #565b70;
+    --text-faint: #8a8fa3;
+    --accent: #0891b2;
+    --accent-strong: #0e7490;
+    --accent-dim: rgba(8, 145, 178, 0.08);
+    --green: #16a34a;
+    --green-dim: rgba(22, 163, 74, 0.1);
+    --red: #dc2626;
+    --red-dim: rgba(220, 38, 38, 0.1);
+    --amber: #b45309;
+    --amber-dim: rgba(180, 83, 9, 0.1);
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04),
+      0 8px 24px -12px rgba(15, 23, 42, 0.1);
+    --glass-tint: rgba(255, 255, 255, 0.16);
+    --glass-border: rgba(15, 23, 42, 0.08);
+    --glass-highlight: rgba(255, 255, 255, 0.9);
+    --glass-shadow: rgba(15, 23, 42, 0.12);
+  }
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* color changes (theme toggle) fade instead of flashing; layout-affecting
+   properties are excluded on purpose */
+html {
+  transition: background-color 200ms ease, color 200ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    transition: none;
+  }
 }
 
 html,

@@ -4,6 +4,8 @@
 
 import Link from "next/link";
 import { listMarkets, STATUS_SETTLED, STATUS_CLAIMED } from "@/lib/onchain";
+import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { LiquidBlobs } from "@/components/LiquidBlobs";
 import styles from "./landing.module.css";
 
 export const dynamic = "force-dynamic";
@@ -38,52 +40,37 @@ function formatUsdc(raw: bigint): string {
   return `${whole.toLocaleString("en-US")}.${cents.toString().padStart(2, "0")}`;
 }
 
+const FEATURED_PILLAR = {
+  tag: "Settlement",
+  title: "Trustless settlement",
+  body: (
+    <>
+      Outcomes are decided by a CPI into TxODDS&apos;s own on-chain{" "}
+      <span className="mono" style={{ wordBreak: "normal" }}>
+        validate_stat
+      </span>{" "}
+      against an anchored Merkle root — never by ONYX. No admin key, no
+      off-chain resolver: the same proof in always produces the same payout
+      out.
+    </>
+  ),
+};
+
 const PILLARS = [
-  {
-    tag: "Settlement",
-    title: "Trustless settlement",
-    body: (
-      <>
-        Outcomes are decided by a CPI into TxODDS&apos;s own on-chain{" "}
-        <span className="mono" style={{ wordBreak: "normal" }}>
-          validate_stat
-        </span>{" "}
-        against an anchored Merkle root — never by ONYX. No admin key, no
-        off-chain resolver.
-      </>
-    ),
-  },
   {
     tag: "Proof",
     title: "Verifiable receipts",
-    body: (
-      <>
-        Every settlement is independently checkable from public RPC alone: the
-        oracle&apos;s return value, its logs, and the market account all have
-        to agree — with zero trust in ONYX&apos;s UI.
-      </>
-    ),
+    body: "Every settlement is independently checkable from public RPC alone: the oracle's return value, its logs, and the market account all have to agree — with zero trust in ONYX's UI.",
   },
   {
     tag: "Privacy",
     title: "Sealed, MEV-proof orders",
-    body: (
-      <>
-        A bet is a 32-byte commitment until the batch clears at one uniform
-        price. Side, size, and price stay hidden — there is nothing to
-        front-run or copy-trade.
-      </>
-    ),
+    body: "A bet is a 32-byte commitment until the batch clears at one uniform price. Side, size, and price stay hidden — nothing to front-run or copy-trade.",
   },
   {
     tag: "Markets",
     title: "Parametric props",
-    body: (
-      <>
-        Markets on any TxLINE stat — goals, corners, cards — via a threshold
-        predicate over per-fixture data. Not just &ldquo;who wins.&rdquo;
-      </>
-    ),
+    body: "Markets on any TxLINE stat — goals, corners, cards — via a threshold predicate over per-fixture data. Not just “who wins.”",
   },
 ] as const;
 
@@ -111,75 +98,87 @@ export default async function LandingPage() {
 
   return (
     <div className={styles.page}>
-      {/* ---- Hero ---- */}
+      {/* ---- Hero: the one liquid-glass brand moment on this page ---- */}
       <section className={styles.hero}>
-        <span className="pill" data-tone="green">
-          <span className={styles.liveDot} aria-hidden="true" />
-          Live on Solana devnet
-        </span>
-        <h1 className={styles.heroTitle}>
-          Confidential, verifiable, trustless{" "}
-          <br className={styles.heroBreak} />
-          prediction markets on Solana.
-        </h1>
-        <p className={styles.heroSub}>
-          Bets stay sealed until the batch clears at one uniform price —
-          nothing to front-run. Outcomes are settled by TxODDS&apos;s own
-          on-chain oracle, and every settlement is verifiable from public RPC.
-        </p>
-        <div className={styles.ctas}>
-          <Link href="/markets" className={`button ${styles.ctaPrimary}`}>
-            Launch app →
-          </Link>
-          <Link
-            href="/demo/mev"
-            className={`button ${styles.ctaGhost}`}
-            data-variant="ghost"
-          >
-            Why sealed orders?
-          </Link>
+        <LiquidBlobs />
+        <div className={styles.heroGlass}>
+          <div className={styles.heroContent}>
+            <span className="pill" data-tone="green">
+              <span className={styles.liveDot} aria-hidden="true" />
+              Live on Solana devnet
+            </span>
+            <h1 className={styles.heroTitle}>
+              Confidential, verifiable, trustless prediction markets.
+            </h1>
+            <p className={styles.heroSub}>
+              Bets stay sealed until the batch clears at one uniform price —
+              nothing to front-run. Outcomes are settled by TxODDS&apos;s own
+              on-chain oracle, and every settlement is verifiable from public
+              RPC.
+            </p>
+            <div className={styles.ctas}>
+              <LiquidButton asChild size="lg" className={styles.ctaLiquid}>
+                <Link href="/markets">Launch app →</Link>
+              </LiquidButton>
+              <Link href="/demo/mev" className={styles.ctaGhost}>
+                Why sealed orders?
+              </Link>
+            </div>
+          </div>
+
+          {/* ---- Live stat readout — real devnet reads, omitted on RPC failure ---- */}
+          {stats && (
+            <div className={styles.statStrip} aria-label="Live devnet statistics">
+              <div className={styles.stat}>
+                <span className={styles.statValue}>{stats.totalMarkets}</span>
+                <span className={styles.statLabel}>markets on-chain</span>
+              </div>
+              <div className={styles.stat}>
+                <span className={styles.statValue}>{stats.settledCount}</span>
+                <span className={styles.statLabel}>settled &amp; claimed</span>
+              </div>
+              <div className={styles.stat}>
+                <span className={styles.statValue}>
+                  {formatUsdc(stats.volumeRaw)}
+                  <span className={styles.statUnit}> test-USDC</span>
+                </span>
+                <span className={styles.statLabel}>matched volume (devnet)</span>
+              </div>
+              <span className={`faint ${styles.statCaption}`}>
+                live from devnet — read from the ONYX program at page load
+              </span>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* ---- Live stat strip (real devnet reads; omitted if RPC fails) ---- */}
-      {stats && (
-        <section className={styles.statStrip} aria-label="Live devnet statistics">
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{stats.totalMarkets}</span>
-            <span className={styles.statLabel}>markets on-chain</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>{stats.settledCount}</span>
-            <span className={styles.statLabel}>settled &amp; claimed</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statValue}>
-              {formatUsdc(stats.volumeRaw)}
-              <span className={styles.statUnit}> test-USDC</span>
-            </span>
-            <span className={styles.statLabel}>matched volume (devnet)</span>
-          </div>
-          <span className={`faint ${styles.statCaption}`}>
-            live from devnet — read from the ONYX program at page load
-          </span>
-        </section>
-      )}
-
-      {/* ---- Four pillars ---- */}
+      {/* ---- Why ONYX: one featured claim + a compact secondary list,
+             deliberately not a uniform four-card icon grid ---- */}
       <section className={styles.section}>
         <p className={styles.sectionLabel}>Why ONYX</p>
         <h2 className={styles.sectionTitle}>Verify, don&apos;t trust.</h2>
-        <div className={styles.pillarGrid}>
+
+        <div className={styles.featured}>
+          <span className="pill" data-tone="accent">
+            {FEATURED_PILLAR.tag}
+          </span>
+          <h3 className={styles.featuredTitle}>{FEATURED_PILLAR.title}</h3>
+          <p className={`muted ${styles.featuredBody}`}>{FEATURED_PILLAR.body}</p>
+        </div>
+
+        <ul className={styles.pillarList}>
           {PILLARS.map((p) => (
-            <div key={p.title} className={`card ${styles.pillar}`}>
-              <span className="pill" data-tone="accent">
+            <li key={p.title} className={styles.pillarRow}>
+              <span className={`pill ${styles.pillarTag}`} data-tone="accent">
                 {p.tag}
               </span>
-              <h3 className={styles.pillarTitle}>{p.title}</h3>
-              <p className={`muted ${styles.pillarBody}`}>{p.body}</p>
-            </div>
+              <div>
+                <h3 className={styles.pillarTitle}>{p.title}</h3>
+                <p className={`muted ${styles.pillarBody}`}>{p.body}</p>
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </section>
 
       {/* ---- How it works ---- */}
@@ -192,7 +191,7 @@ export default async function LandingPage() {
           {STEPS.map((s, i) => (
             <li key={s.name} className={styles.step}>
               <span className={styles.stepNum} aria-hidden="true">
-                {i + 1}
+                {String(i + 1).padStart(2, "0")}
               </span>
               <span className={styles.stepName}>{s.name}</span>
               <span className={`muted ${styles.stepBody}`}>{s.body}</span>

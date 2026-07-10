@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { WalletButton } from "./WalletButton";
+import { ThemeToggle } from "./ThemeToggle";
 import styles from "./Nav.module.css";
 
 const LINKS = [
@@ -34,6 +35,7 @@ export function Nav() {
         ))}
       </nav>
       <div className={styles.wallet}>
+        <ThemeToggle />
         <WalletButton />
       </div>
     </header>

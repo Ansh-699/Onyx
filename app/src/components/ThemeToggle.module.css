@@ -1,0 +1,51 @@
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+.toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.sun,
+.moon {
+  position: absolute;
+  transition: opacity 200ms ease, transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* dark mode (default): show the sun (click to go light) */
+.moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+.sun {
+  opacity: 0;
+  transform: rotate(-40deg) scale(0.6);
+}
+
+:global(html[data-theme="light"]) .moon {
+  opacity: 0;
+  transform: rotate(40deg) scale(0.6);
+}
+:global(html[data-theme="light"]) .sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sun,
+  .moon {
+    transition: opacity 120ms ease;
+  }
+}
