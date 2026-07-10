@@ -7,7 +7,7 @@ import { Transaction } from "@solana/web3.js";
 import type { Comparison } from "@/lib/types";
 import { comparisonSymbol } from "@/lib/merkle";
 import { getConfigUsdcMint, explorerTxUrl, explorerAddressUrl } from "@/lib/onchain";
-import { SELECTABLE_STAT_OPTIONS } from "@/lib/statKeys";
+import { SELECTABLE_STAT_OPTIONS, pairedStatKey, OP_ADD, OP_SUBTRACT } from "@/lib/statKeys";
 import { listUpcomingRealFixtures } from "@/lib/fixtureMeta";
 import { friendlyError } from "@/lib/errors";
 import {
@@ -68,6 +68,8 @@ export default function CreatePage() {
 
   const [fixtureId, setFixtureId] = useState<number>(DEMO_FIXTURE.fixtureId);
   const [statKey, setStatKey] = useState<number>(DEMO_FIXTURE.statKey);
+  const [combined, setCombined] = useState(false);
+  const [combineOp, setCombineOp] = useState<"add" | "subtract">("add");
   const [op, setOp] = useState<Comparison>("greaterThan");
   const [threshold, setThreshold] = useState<string>(String(DEMO_FIXTURE.defaultThreshold));
   const [commitMinutes, setCommitMinutes] = useState<string>("3");
@@ -80,6 +82,16 @@ export default function CreatePage() {
   const isDemoFixture = fixtureId === DEMO_FIXTURE.fixtureId;
   const statOptions = isDemoFixture ? [{ label: "P1 goals", key: DEMO_FIXTURE.statKey }] : SELECTABLE_STAT_OPTIONS;
   const statLabel = statOptions.find((s) => s.key === statKey)?.label ?? "stat";
+  // Combined ADD/SUBTRACT-over-two-stats markets ("Total corners", "Goal
+  // difference") -- the on-chain program and describeMarketPredicate already
+  // support this (op field + a second stat key), only /create's form never
+  // exposed it. Disabled for the demo fixture: SettleClaimPanel's `provable`
+  // gate requires statBKey===0 && op===OP_NONE, since the bundled proof only
+  // covers a single stat -- a combined demo-fixture market would create
+  // orders normally but never be settleable from this UI.
+  const pairKey = !isDemoFixture ? pairedStatKey(statKey) : null;
+  const pairLabel = pairKey != null ? SELECTABLE_STAT_OPTIONS.find((s) => s.key === pairKey)?.label : null;
+  const isCombined = combined && pairKey != null;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,8 +117,8 @@ export default function CreatePage() {
       const terms = {
         fixtureId: BigInt(fixtureId),
         statAKey: statKey,
-        statBKey: 0,
-        op: OP_NONE,
+        statBKey: isCombined ? pairKey! : 0,
+        op: isCombined ? (combineOp === "add" ? OP_ADD : OP_SUBTRACT) : OP_NONE,
         predicate: CMP_MAP[op],
         threshold: BigInt(threshold || "0"),
         deadline,
@@ -194,6 +206,24 @@ export default function CreatePage() {
           </select>
         </label>
 
+        {pairKey != null && (
+          <div className={styles.row}>
+            <label className={styles.field} style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
+              <input type="checkbox" checked={combined} onChange={(e) => setCombined(e.target.checked)} />
+              <span>Combine with {pairLabel} (both participants)</span>
+            </label>
+            {combined && (
+              <label className={styles.field}>
+                <span>Combine as</span>
+                <select value={combineOp} onChange={(e) => setCombineOp(e.target.value as "add" | "subtract")}>
+                  <option value="add">Total (add)</option>
+                  <option value="subtract">Difference (subtract)</option>
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+
         <div className={styles.row}>
           <label className={styles.field}>
             <span>Operator</span>
@@ -226,7 +256,8 @@ export default function CreatePage() {
         <div className={styles.preview}>
           Settles YES iff{" "}
           <strong>
-            {statLabel} {comparisonSymbol(op)} {threshold || "?"}
+            {isCombined ? `${combineOp === "add" ? "total" : "difference in"} ${statLabel.replace(/^P\d /, "")} (${statLabel} ${combineOp === "add" ? "+" : "−"} ${pairLabel})` : statLabel}{" "}
+            {comparisonSymbol(op)} {threshold || "?"}
           </strong>
           . Orders are sealed for {commitMinutes || "?"} min, then revealed
           for {revealMinutes || "?"} min before the batch match runs.

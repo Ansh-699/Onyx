@@ -54,9 +54,27 @@ export const SELECTABLE_STAT_OPTIONS: { label: string; key: number }[] = [
   { label: "P2 goals", key: 2 },
   { label: "P1 yellow cards", key: 3 },
   { label: "P2 yellow cards", key: 4 },
+  { label: "P1 red cards", key: 5 },
+  { label: "P2 red cards", key: 6 },
   { label: "P1 corners", key: 7 },
   { label: "P2 corners", key: 8 },
 ];
+
+/**
+ * The other participant's key for the SAME base stat + period (e.g. P1 goals
+ * -> P2 goals) — the only pairing `describeMarketPredicate` knows how to
+ * phrase as "Total X" / "Difference in X" for a combined ADD/SUBTRACT
+ * market. Null if `key` isn't recognized or has no pair in BASE_STATS.
+ */
+export function pairedStatKey(key: number): number | null {
+  const { period, baseKey } = decodeStatKey(key);
+  const base = BASE_STATS[baseKey];
+  if (!base) return null;
+  const pairBaseKey = Object.entries(BASE_STATS).find(
+    ([, v]) => v.label === base.label && v.participant !== base.participant,
+  )?.[0];
+  return pairBaseKey ? period * 1000 + Number(pairBaseKey) : null;
+}
 
 export function decodeStatKey(key: number): { period: number; baseKey: number } {
   return { period: Math.floor(key / 1000), baseKey: key % 1000 };
