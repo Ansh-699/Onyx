@@ -102,28 +102,55 @@ pub fn cpi_delegate(
 /// CPI into the Magic Program (on the ER) to schedule a commit+undelegate of
 /// `delegated`. Runs on the ephemeral rollup, never base layer.
 ///
-/// Magic account order: `[payer(s,w), magic_context(w), ...committed(ro)]`.
-/// Data = `ScheduleCommitAndUndelegate` bincode variant = `[2,0,0,0]`.
+/// Magic account order: `[payer(s,w), magic_context(w), delegated(w)]`. Data =
+/// `ScheduleCommitAndUndelegate` bincode variant = `[2,0,0,0]`. NOTE: the
+/// account being committed+undelegated MUST be writable — the magic program
+/// rejects a read-only account here ("required to be writable and delegated
+/// in order to be undelegated"). (The doc comment on this function used to
+/// say the account was read-only ("...committed(ro)"), which never matched
+/// the actual, tested, working code below (`AccountMeta::writable`) — fixed;
+/// don't trust that stale comment as evidence for anything, including
+/// whether multiple accounts are acceptable in one call, which is untested
+/// here and handled by `cpi_schedule_commit_and_undelegate_many` below.)
 pub fn cpi_schedule_commit_and_undelegate(
     magic_program: &AccountInfo,
     payer: &AccountInfo,
     magic_context: &AccountInfo,
     delegated: &AccountInfo,
 ) -> ProgramResult {
-    // The account being committed+undelegated MUST be writable — the magic
-    // program rejects a read-only account here ("required to be writable and
-    // delegated in order to be undelegated").
-    let metas = [
-        AccountMeta::writable_signer(payer.key()),
-        AccountMeta::writable(magic_context.key()),
-        AccountMeta::writable(delegated.key()),
-    ];
+    cpi_schedule_commit_and_undelegate_many(magic_program, payer, magic_context, &[delegated])
+}
+
+/// Generalized form: attempts to commit+undelegate MULTIPLE accounts in one
+/// CPI, by appending each as an additional writable trailing account. This
+/// is genuinely untested against the real Magic Program before this comment
+/// was written — see `services/ingestion/src/er_undelegate_multi_probe.ts`
+/// for the empirical result once run. If the Magic Program only accepts one
+/// committed account per call, this will fail with an invalid-instruction-
+/// data-shaped error, and callers should fall back to one
+/// `cpi_schedule_commit_and_undelegate` call per account.
+pub fn cpi_schedule_commit_and_undelegate_many(
+    magic_program: &AccountInfo,
+    payer: &AccountInfo,
+    magic_context: &AccountInfo,
+    delegated: &[&AccountInfo],
+) -> ProgramResult {
+    let mut metas: Vec<AccountMeta> = Vec::with_capacity(2 + delegated.len());
+    metas.push(AccountMeta::writable_signer(payer.key()));
+    metas.push(AccountMeta::writable(magic_context.key()));
+    for d in delegated {
+        metas.push(AccountMeta::writable(d.key()));
+    }
     let ix = Instruction {
         program_id: magic_program.key(),
         accounts: &metas,
         data: &MAGIC_SCHEDULE_COMMIT_AND_UNDELEGATE,
     };
-    pinocchio::cpi::invoke(&ix, &[payer, magic_context, delegated])
+    let mut infos: Vec<&AccountInfo> = Vec::with_capacity(2 + delegated.len());
+    infos.push(payer);
+    infos.push(magic_context);
+    infos.extend_from_slice(delegated);
+    pinocchio::cpi::slice_invoke(&ix, &infos)
 }
 
 /// True if `data` begins with the delegation program's external-undelegate

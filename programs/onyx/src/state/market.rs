@@ -30,7 +30,15 @@
 //! 110     8    reveal_end_ts (i64 LE)
 //! 118     1    phase (u8: 0 None / 1 Commit / 2 Reveal / 3 Matched)
 //! 119     8    clearing_price (u64 LE, 0..=ODDS_SCALE; set by run_batch_match)
-//! 127     1  _reserved (1 byte still spare)
+//! 127     1  revealed_count (u8; ER-fast TradingAccount reveals only — see
+//!            docs/ER_TRADING_DESIGN.md. Was "_reserved (1 byte still spare)";
+//!            repurposing an already-zeroed reserved byte instead of growing
+//!            MARKET_LEN, since every instruction's length check is `data.len()
+//!            < MARKET_LEN` -- growing MARKET_LEN would make every EXISTING
+//!            128-byte market account fail that check. u8 is enough range:
+//!            MAX_BATCH_ORDERS = 16 << 255. Base sealed-order flow
+//!            (SealedOrder-based) never touches this byte, only the
+//!            TradingAccount-based fast path does.
 //! ```
 
 use crate::constants::DISC_MARKET;
@@ -58,6 +66,7 @@ const O_COMMIT_END_TS: usize = 102;
 const O_REVEAL_END_TS: usize = 110;
 const O_PHASE: usize = 118;
 const O_CLEARING_PRICE: usize = 119;
+const O_REVEALED_COUNT: usize = 127;
 
 pub struct Market<'a> {
     data: &'a mut [u8],
@@ -260,6 +269,21 @@ impl<'a> Market<'a> {
     #[inline]
     pub fn set_clearing_price(&mut self, price: u64) {
         self.data[O_CLEARING_PRICE..O_CLEARING_PRICE + 8].copy_from_slice(&price.to_le_bytes());
+    }
+
+    #[inline]
+    pub fn revealed_count(&self) -> u8 {
+        self.data[O_REVEALED_COUNT]
+    }
+
+    #[inline]
+    pub fn inc_revealed_count(&mut self) {
+        self.data[O_REVEALED_COUNT] = self.data[O_REVEALED_COUNT].saturating_add(1);
+    }
+
+    #[inline]
+    pub fn dec_revealed_count(&mut self) {
+        self.data[O_REVEALED_COUNT] = self.data[O_REVEALED_COUNT].saturating_sub(1);
     }
 
     #[inline]

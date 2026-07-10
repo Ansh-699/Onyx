@@ -7,11 +7,13 @@ pub mod config;
 pub mod market;
 pub mod position;
 pub mod sealed_order;
+pub mod trading_account;
 
 pub use config::Config;
 pub use market::Market;
 pub use position::Position;
 pub use sealed_order::SealedOrder;
+pub use trading_account::TradingAccount;
 
 use crate::error::OnyxError;
 

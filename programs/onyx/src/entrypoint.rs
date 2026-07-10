@@ -75,11 +75,37 @@ pub fn process_instruction(
         IX_REFUND_UNREVEALED => {
             crate::instructions::refund_unrevealed::process(program_id, accounts, args)
         }
-        // 9..=13 reserved for parlay/pause. The delegation program's external
-        // undelegate callback (disc [196,28,41,206,48,37,51,167]) is not yet
-        // handled — see BUILD_STATE.md ER notes (finalization callback is the
-        // one remaining piece; its exact account layout isn't in the public
-        // magicblock-*-api crates).
+        // ---- ER-fast trading (TradingAccount) — additive, see
+        // docs/ER_TRADING_DESIGN.md. Disc 20-21/28 base-layer, 22 base
+        // (delegate), 23-27 ER-only. ----
+        IX_OPEN_TRADING_ACCOUNT => {
+            crate::instructions::open_trading_account::process(program_id, accounts, args)
+        }
+        IX_DEPOSIT_TRADING => {
+            crate::instructions::deposit_trading::process(program_id, accounts, args)
+        }
+        IX_DELEGATE_TRADING_ACCOUNT => {
+            crate::instructions::delegate_trading_account::process(program_id, accounts, args)
+        }
+        IX_SUBMIT_ORDER_FAST => {
+            crate::instructions::submit_order_fast::process(program_id, accounts, args)
+        }
+        IX_REVEAL_ORDER_FAST => {
+            crate::instructions::reveal_order_fast::process(program_id, accounts, args)
+        }
+        IX_CANCEL_ORDER_FAST => {
+            crate::instructions::cancel_order_fast::process(program_id, accounts, args)
+        }
+        IX_RUN_BATCH_MATCH_FAST => {
+            crate::instructions::run_batch_match_fast::process(program_id, accounts, args)
+        }
+        IX_UNDELEGATE_TRADING_ACCOUNT => {
+            crate::instructions::undelegate_trading_account::process(program_id, accounts, args)
+        }
+        IX_WITHDRAW_TRADING => {
+            crate::instructions::withdraw_trading::process(program_id, accounts, args)
+        }
+        // 9..=13 reserved for parlay/pause.
         _ => Err(ProgramError::InvalidInstructionData),
     }
 }

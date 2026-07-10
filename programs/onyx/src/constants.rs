@@ -41,6 +41,30 @@ pub const IX_REFUND_UNREVEALED: u8 = 19;
 pub const DISC_SEALED_ORDER: u8 = 4;
 pub const SEED_SEALED_ORDER: &[u8] = b"order";
 
+// ---- ER-fast trading (Level 2 — TradingAccount, additive to the sealed-order
+// flow above; see docs/ER_TRADING_DESIGN.md). Deposit/delegate/withdraw are
+// base-layer; submit/reveal/cancel/match are ER-only, pure data mutation on
+// an already-delegated account, no token CPI, no lamports movement — the
+// operation class proven to work on the ER (docs/ER_TRADING_DESIGN.md §0). ----
+pub const DISC_TRADING_ACCOUNT: u8 = 5;
+pub const SEED_TRADING_ACCOUNT: &[u8] = b"trading";
+
+pub const IX_OPEN_TRADING_ACCOUNT: u8 = 20; // base
+pub const IX_DEPOSIT_TRADING: u8 = 21; // base
+pub const IX_DELEGATE_TRADING_ACCOUNT: u8 = 22; // base
+pub const IX_SUBMIT_ORDER_FAST: u8 = 23; // ER
+pub const IX_REVEAL_ORDER_FAST: u8 = 24; // ER
+pub const IX_CANCEL_ORDER_FAST: u8 = 25; // ER
+pub const IX_RUN_BATCH_MATCH_FAST: u8 = 26; // ER
+pub const IX_UNDELEGATE_TRADING_ACCOUNT: u8 = 27; // ER
+pub const IX_WITHDRAW_TRADING: u8 = 28; // base
+
+/// TradingAccount.status.
+pub const TRADING_STATUS_NONE: u8 = 0; // no open order
+pub const TRADING_STATUS_LOCKED: u8 = 1; // committed, not yet revealed
+pub const TRADING_STATUS_REVEALED: u8 = 2; // revealed, awaiting batch match
+pub const TRADING_STATUS_MATCHED: u8 = 3; // processed by a fast batch match
+
 /// Market.phase (sealed-order sub-state; independent of Market.status, which
 /// stays Open/Live throughout so join_market/deadline gating is unaffected).
 /// PHASE_NONE (0) means "not a sealed market" -- every existing Market has a

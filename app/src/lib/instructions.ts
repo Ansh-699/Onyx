@@ -420,3 +420,269 @@ export function buildClaimIx(params: {
     data: Buffer.from([IX_CLAIM]),
   });
 }
+
+// =====================================================================
+// MagicBlock ER delegation (base program instructions 3/4 — existing on
+// devnet since the Phase 0 spike, but this repo never had TS builders for
+// them until now) + ER-fast trading (TradingAccount, instructions 20-28,
+// additive — see docs/ER_TRADING_DESIGN.md). Every ER-only instruction
+// (23-27) deliberately keeps the signer read-only (never writable): the
+// ER hard-rejects any tx that would change a non-delegated account's
+// balance, including the fee payer itself (Phase 0 probe finding).
+// =====================================================================
+
+export const IX_DELEGATE_MARKET = 3;
+export const IX_UNDELEGATE_MARKET = 4;
+export const IX_OPEN_TRADING_ACCOUNT = 20;
+export const IX_DEPOSIT_TRADING = 21;
+export const IX_DELEGATE_TRADING_ACCOUNT = 22;
+export const IX_SUBMIT_ORDER_FAST = 23;
+export const IX_REVEAL_ORDER_FAST = 24;
+export const IX_CANCEL_ORDER_FAST = 25;
+export const IX_RUN_BATCH_MATCH_FAST = 26;
+export const IX_UNDELEGATE_TRADING_ACCOUNT = 27;
+export const IX_WITHDRAW_TRADING = 28;
+
+export const DELEGATION_PROGRAM_ID = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
+export const MAGIC_PROGRAM_ID = new PublicKey("Magic11111111111111111111111111111111111111");
+export const MAGIC_CONTEXT_ID = new PublicKey("MagicContext1111111111111111111111111111111");
+
+export const SEED_TRADING = Buffer.from("trading");
+export const SEED_DELEGATE_BUFFER = Buffer.from("buffer");
+export const SEED_DELEGATION_RECORD = Buffer.from("delegation");
+export const SEED_DELEGATION_METADATA = Buffer.from("delegation-metadata");
+
+export const TRADING_STATUS_NAMES: Record<number, string> = {
+  0: "None",
+  1: "Locked",
+  2: "Revealed",
+  3: "Matched",
+};
+
+export function tradingAccountPda(market: PublicKey, owner: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [SEED_TRADING, market.toBuffer(), owner.toBuffer()],
+    ONYX_PROGRAM_ID,
+  )[0];
+}
+export function delegateBufferPda(delegated: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([SEED_DELEGATE_BUFFER, delegated.toBuffer()], ONYX_PROGRAM_ID)[0];
+}
+export function delegationRecordPda(delegated: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([SEED_DELEGATION_RECORD, delegated.toBuffer()], DELEGATION_PROGRAM_ID)[0];
+}
+export function delegationMetadataPda(delegated: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([SEED_DELEGATION_METADATA, delegated.toBuffer()], DELEGATION_PROGRAM_ID)[0];
+}
+
+/** Shared account list for delegating any PDA this program owns (base layer). */
+function delegateAccounts(payer: PublicKey, delegated: PublicKey) {
+  return [
+    { pubkey: payer, isSigner: true, isWritable: true },
+    { pubkey: delegated, isSigner: false, isWritable: true },
+    { pubkey: ONYX_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: delegateBufferPda(delegated), isSigner: false, isWritable: true },
+    { pubkey: delegationRecordPda(delegated), isSigner: false, isWritable: true },
+    { pubkey: delegationMetadataPda(delegated), isSigner: false, isWritable: true },
+    { pubkey: DELEGATION_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+  ];
+}
+
+// ---- delegate_market (disc 3, base) ----
+export function buildDelegateMarketIx(params: { payer: PublicKey; market: PublicKey; commitFrequencyMs?: number }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: delegateAccounts(params.payer, params.market),
+    data: Buffer.concat([Buffer.from([IX_DELEGATE_MARKET]), u32le(params.commitFrequencyMs ?? 0xffffffff)]),
+  });
+}
+
+// ---- undelegate_market (disc 4, ER) ----
+export function buildUndelegateMarketIx(params: { payer: PublicKey; market: PublicKey }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.payer, isSigner: true, isWritable: true },
+      { pubkey: MAGIC_CONTEXT_ID, isSigner: false, isWritable: true },
+      { pubkey: params.market, isSigner: false, isWritable: true },
+      { pubkey: MAGIC_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([IX_UNDELEGATE_MARKET]),
+  });
+}
+
+// ---- open_trading_account (disc 20, base) ----
+export function buildOpenTradingAccountIx(params: { owner: PublicKey; market: PublicKey }): { ix: TransactionInstruction; trading: PublicKey } {
+  const trading = tradingAccountPda(params.market, params.owner);
+  return {
+    trading,
+    ix: new TransactionInstruction({
+      programId: ONYX_PROGRAM_ID,
+      keys: [
+        { pubkey: params.owner, isSigner: true, isWritable: true },
+        { pubkey: params.market, isSigner: false, isWritable: false },
+        { pubkey: trading, isSigner: false, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([IX_OPEN_TRADING_ACCOUNT]),
+    }),
+  };
+}
+
+// ---- deposit_trading (disc 21, base) ----
+export function buildDepositTradingIx(params: {
+  owner: PublicKey;
+  market: PublicKey;
+  amount: bigint;
+  usdcMint: PublicKey;
+  ownerAta?: PublicKey;
+}): TransactionInstruction {
+  const trading = tradingAccountPda(params.market, params.owner);
+  const vault = vaultPda(params.market);
+  const ownerAta = params.ownerAta ?? getAssociatedTokenAddressSync(params.usdcMint, params.owner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.owner, isSigner: true, isWritable: true },
+      { pubkey: params.market, isSigner: false, isWritable: false },
+      { pubkey: trading, isSigner: false, isWritable: true },
+      { pubkey: vault, isSigner: false, isWritable: true },
+      { pubkey: ownerAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([Buffer.from([IX_DEPOSIT_TRADING]), u64le(params.amount)]),
+  });
+}
+
+// ---- delegate_trading_account (disc 22, base) ----
+export function buildDelegateTradingAccountIx(params: {
+  payer: PublicKey;
+  market: PublicKey;
+  owner: PublicKey;
+  commitFrequencyMs?: number;
+}): TransactionInstruction {
+  const trading = tradingAccountPda(params.market, params.owner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: delegateAccounts(params.payer, trading),
+    data: Buffer.concat([Buffer.from([IX_DELEGATE_TRADING_ACCOUNT]), u32le(params.commitFrequencyMs ?? 0xffffffff)]),
+  });
+}
+
+// ---- submit_order_fast (disc 23, ER — owner read-only) ----
+export function buildSubmitOrderFastIx(params: {
+  owner: PublicKey;
+  market: PublicKey;
+  commitment: Buffer;
+  collateral: bigint;
+}): TransactionInstruction {
+  const trading = tradingAccountPda(params.market, params.owner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.owner, isSigner: true, isWritable: false },
+      { pubkey: params.market, isSigner: false, isWritable: true },
+      { pubkey: trading, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.concat([Buffer.from([IX_SUBMIT_ORDER_FAST]), params.commitment, u64le(params.collateral)]),
+  });
+}
+
+// ---- reveal_order_fast (disc 24, ER — owner read-only) ----
+export function buildRevealOrderFastIx(params: {
+  owner: PublicKey;
+  market: PublicKey;
+  side: number;
+  size: bigint;
+  limitPrice: bigint;
+  nonce: bigint;
+}): TransactionInstruction {
+  const trading = tradingAccountPda(params.market, params.owner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.owner, isSigner: true, isWritable: false },
+      { pubkey: params.market, isSigner: false, isWritable: true },
+      { pubkey: trading, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.concat([
+      Buffer.from([IX_REVEAL_ORDER_FAST, params.side]),
+      u64le(params.size),
+      u64le(params.limitPrice),
+      u64le(params.nonce),
+    ]),
+  });
+}
+
+// ---- cancel_order_fast (disc 25, ER — owner read-only) ----
+export function buildCancelOrderFastIx(params: { owner: PublicKey; market: PublicKey }): TransactionInstruction {
+  const trading = tradingAccountPda(params.market, params.owner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.owner, isSigner: true, isWritable: false },
+      { pubkey: params.market, isSigner: false, isWritable: true },
+      { pubkey: trading, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.from([IX_CANCEL_ORDER_FAST]),
+  });
+}
+
+// ---- run_batch_match_fast (disc 26, ER — payer read-only, permissionless) ----
+export function buildRunBatchMatchFastIx(params: {
+  payer: PublicKey;
+  market: PublicKey;
+  tradingAccounts: PublicKey[];
+}): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.payer, isSigner: true, isWritable: false },
+      { pubkey: params.market, isSigner: false, isWritable: true },
+      ...params.tradingAccounts.map((t) => ({ pubkey: t, isSigner: false, isWritable: true })),
+    ],
+    data: Buffer.from([IX_RUN_BATCH_MATCH_FAST]),
+  });
+}
+
+// ---- undelegate_trading_account (disc 27, ER) — generic, accepts any set of
+// this program's delegated accounts (market and/or one or more
+// TradingAccounts) to commit+undelegate together in one CPI. ----
+export function buildUndelegateManyIx(params: { payer: PublicKey; delegated: PublicKey[] }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.payer, isSigner: true, isWritable: true },
+      { pubkey: MAGIC_CONTEXT_ID, isSigner: false, isWritable: true },
+      { pubkey: MAGIC_PROGRAM_ID, isSigner: false, isWritable: false },
+      ...params.delegated.map((d) => ({ pubkey: d, isSigner: false, isWritable: true })),
+    ],
+    data: Buffer.from([IX_UNDELEGATE_TRADING_ACCOUNT]),
+  });
+}
+
+// ---- withdraw_trading (disc 28, base) ----
+export function buildWithdrawTradingIx(params: {
+  owner: PublicKey;
+  market: PublicKey;
+  usdcMint: PublicKey;
+  ownerAta?: PublicKey;
+}): TransactionInstruction {
+  const trading = tradingAccountPda(params.market, params.owner);
+  const vault = vaultPda(params.market);
+  const ownerAta = params.ownerAta ?? getAssociatedTokenAddressSync(params.usdcMint, params.owner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.owner, isSigner: true, isWritable: true },
+      { pubkey: configPda(), isSigner: false, isWritable: false },
+      { pubkey: params.market, isSigner: false, isWritable: false },
+      { pubkey: trading, isSigner: false, isWritable: true },
+      { pubkey: vault, isSigner: false, isWritable: true },
+      { pubkey: ownerAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([IX_WITHDRAW_TRADING]),
+  });
+}
