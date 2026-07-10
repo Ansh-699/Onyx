@@ -52,8 +52,18 @@
 ## Architecture (locked scope: MagicBlock core + Pinocchio + parlays/MEV)
 - L0 Solana L1: escrow PDAs, settle via CPI validate_stat, verifiable receipt. Trust root; settlement NEVER in a rollup.
 - L1 MagicBlock ER: delegate market/position at kickoff for ~10ms in-play; commit+undelegate at end.
+  **[UPDATED, see "L1 MagicBlock ER — PHASE 1 SHIPPED" below]** what actually
+  got built is a new `TradingAccount` type (not `Position`, which stays
+  classic/parimutuel/base-only) delegated alongside the market, with a
+  3s-cadence batch-match loop rather than continuous ~10ms in-play state —
+  this line is the original pre-build plan, kept for history; the entry
+  below is what's real.
 - L2 MagicBlock PER (TEE): shielded bet side/size; MEV-proof sealed-bid batch.
+  Still exactly the de-risk-spike-only status described below — unchanged.
 - L3 sauce: on-chain parlays (per-leg validate_stat) + MEV-proof demo.
+  Parlays not started; MEV-proof demo shipped as the classic sealed-order
+  commit-reveal-batch flow, and now ALSO as the ER-fast flow (same
+  commit-reveal-batch shape, executing on the rollup for speed).
 - Escrow mint: devnet USDC-classic (separate from TxL Token-2022 sub mint).
 
 ## Repo layout (in place under onyx/)
@@ -557,3 +567,156 @@ onyx/
     encoding, PDA derivation, account plumbing, the live API route, the
     full on-chain lifecycle) is now proven for real; only the literal
     "click Approve in the wallet popup" step is unverified by me.
+
+- [DONE] **L1 MagicBlock ER — PHASE 1 SHIPPED (this log stopped updating
+  before this work; the README briefly and incorrectly said it was "held
+  back from the submission" until that was caught and corrected — it is
+  shipped and is the default trading flow).** Reverses the earlier
+  "bank the ER design doc as roadmap" call per explicit direction.
+  New account type `state/trading_account.rs` (176 bytes, one per
+  user-per-market, seeds `["trading", market, owner]`) + 9 new instructions
+  (disc 20-28): `open_trading_account`/`deposit_trading` (base, the one real
+  SPL transfer in), `delegate_trading_account` (base),
+  `submit_order_fast`/`reveal_order_fast`/`cancel_order_fast`/
+  `run_batch_match_fast` (ER-only), `undelegate_trading_account` (ER,
+  generic — accepts any set of this program's delegated accounts in ONE
+  call, proven with market + 2 TradingAccounts together), `withdraw_trading`
+  (base, parimutuel payout reusing claim.rs's exact formula against the SAME
+  `Market.total_side_a/b` pools `run_batch_match_fast` writes into — ER-fast
+  and classic matched volume share one combined pool by design). `Market`
+  gained a `revealed_count` byte, repurposed from an already-zeroed reserved
+  byte (not grown), so existing 128-byte market accounts keep passing every
+  length check. `SealedOrder`/`Position`/classic instructions untouched —
+  25/25 existing host tests still pass. Deployed as a program upgrade.
+  - Proven server-side end-to-end twice
+    (`services/ingestion/src/er_trading_lifecycle_proof.ts`): deposit →
+    delegate → ER submit/reveal/match → undelegate → settle → withdraw, ER
+    steps confirmed Finalized on the ER endpoint AND "not found" on base.
+    First run surfaced a real bug (`TradingAccount::set_matched_size` never
+    flipped status to `Matched`, so withdraw's winnings branch silently
+    never fired) — fixed, redeployed, re-run clean.
+  - Batch-inclusion completeness check (the most safety-critical piece)
+    live-verified with a two-variant attack test
+    (`er_omission_attack_test.ts`): wrong-count omission rejected
+    (`Custom(6023)`/TooManyOrders), duplicate-account padding rejected
+    (`Custom(6018)`/WrongPhase on the second occurrence's status re-check —
+    a duplicated writable account aliases the same memory, so its status
+    already flipped to `Matched` by the time the second occurrence is
+    processed), legitimate complete set succeeds.
+  - `cancel_order_fast` live-verified (`er_cancel_test.ts`): commit, cancel,
+    collateral restored, slot reusable for a fresh commit same window.
+  - **Bug found and fixed later, before UI work started** (caught by
+    re-reading the code, not by a failing test): `run_batch_match_fast` set
+    `matched_size` but never released `locked - matched` back to
+    `available` on a partial fill — collateral above the matched amount was
+    permanently stranded (status flips to `Matched`, which `cancel_order_fast`
+    no longer accepts once matched). Fixed; proven with a deliberately
+    unequal match (`er_partial_fill_test.ts`: 2,000,000 locked, 1,000,000
+    matched, the other 1,000,000 correctly released and genuinely withdrawn).
+
+- [DONE] **ER-fast frontend — full browser UI, wired as the DEFAULT trading
+  flow (not opt-in, not a side demo).** `ErTradingPanel` (new,
+  `app/src/components/market/ErTradingPanel.tsx`) drives the whole
+  lifecycle from a real connected wallet: enable-market (`delegate_market`)
+  → deposit & enable (`open_trading_account`+`deposit_trading`+
+  `delegate_trading_account` combined into ONE signature) → bet →
+  resize/cancel (works even post-undelegate, as a safety net) → reveal →
+  batch-match countdown (3s cadence, live revealed-order count) →
+  undelegate (market + every `TradingAccount` in one call) → withdraw.
+  Classic `SealedOrderPanel` kept fully intact, demoted to a collapsed
+  disclosure — additive, not a replacement.
+  - New `app/src/lib/erRouting.ts`: `getDelegationStatus`/`resolveConnection`
+    against the MagicBlock router (`https://devnet-router.magicblock.app/`,
+    `getDelegationStatus` method), 3s TTL cache (backs both live polling and
+    the just-before-send check on every ER-bound tx). `useRoutedMarket`
+    (`app/src/lib/hooks.ts`) makes every child panel (PricePanel,
+    PhaseTimeline, SettleClaimPanel) read whichever ledger currently holds
+    the market's state instead of a frozen base snapshot.
+  - `app/src/app/api/house-counter-fast/` mirrors the existing
+    house-counter demo-liquidity pattern for the new account type.
+  - `app/src/lib/errors.ts::classifyWrongLedger` detects the wrong-ledger
+    failure class specific to phase-based routing and returns a plain
+    retry message instead of a raw RPC error — see its own doc comment for
+    the exact error-string patterns this matches, all observed live (most
+    recently `InvalidWritableAccount`, found and fixed during a later
+    self-audit pass below).
+  - Two real program bugs found only by driving this through an actual
+    browser with a real signing wallet, both fixed and redeployed:
+    `open_trading_account` required `market_ai` to be ONYX-owned, which is
+    never true once the market has been delegated — exactly the intended
+    flow (market delegates first, then traders join) — check removed
+    outright, wasn't protecting anything load-bearing; and the
+    `run_batch_match_fast` partial-fill bug above (found independently
+    twice, once by code review before this UI existed, once again live
+    here — both fixes are the same underlying change).
+  - Two real frontend bugs the same live testing surfaced: `sendVia` was
+    using wallet-adapter's `sendTransaction()` convenience wrapper, which
+    delegates broadcast to the wallet's own `signAndSendTransaction` — real
+    Phantom submits that through ITS OWN internal RPC, decoupled from
+    whatever `connection` is passed in, which would silently defeat ER
+    routing for ER-bound instructions; switched to explicit
+    `signTransaction` + `connection.sendRawTransaction`. And `sendVia`
+    never checked `confirmTransaction`'s `.value.err` — a program-level
+    failure doesn't throw there, so a failed tx was logging a "successful"
+    signature with no error shown, which is how the `open_trading_account`
+    bug above went unnoticed until direct on-chain inspection.
+  - Full lifecycle proven end-to-end through the actual website with a real
+    signing wallet (Playwright-injected provider backed by a real devnet
+    Keypair, signing genuine transactions the real `ErTradingPanel`/
+    `instructions.ts` code builds via actual button clicks —
+    `app/scripts/er_browser_proof.ts`, see its header comment for the exact
+    honesty framing). Every ER-bound step independently confirmed Finalized
+    on the ER endpoint and absent from base; every base-bound step
+    confirmed Finalized on base.
+
+- [DONE] **Self-audit pass on the above** (triggered by re-reading the
+  Phase 1 work rather than trusting the "Done" report; this project's
+  pattern all along has been that a second, skeptical pass finds real
+  gaps). Found and fixed three real issues purely through re-testing, not
+  user reports:
+  - `PricePanel`'s "Locked (pending match)" stat only ever summed the
+    classic `SealedOrder` flow's collateral — blind to the new default
+    ER-fast `TradingAccount` flow, silently under-reporting on any market
+    using it. Fixed (sums both); live-verified against a real delegated
+    market with real locked ER-fast collateral.
+  - `classifyWrongLedger` only matched two of (at least) three real
+    wrong-ledger error shapes. Found the third by actually forcing the race
+    live: placed a real bet, froze a browser tab's belief that the market
+    was still ER-delegated (Playwright-intercepted the router response),
+    undelegated for real out-of-band, then clicked Cancel in the stale tab.
+    It rendered a raw `Transaction <sig> failed: "InvalidWritableAccount"`
+    string that overflowed the error box instead of the friendly message.
+    Fixed the missing pattern AND added `overflow-wrap` as a safety net for
+    any future unclassified error. Re-ran the same live race after the fix
+    and confirmed the friendly message now renders
+    (`app/scripts/er_browser_error_paths.ts`).
+  - Once a market is ER-delegated, base's copy freezes at its last known
+    state rather than disappearing (confirmed live: still readable, stale
+    phase/fields) — the classic sealed-order flow reads that frozen
+    snapshot with no staleness check, so a market mid-ER-lifecycle can show
+    "phase: Commit" in the classic panel while the real (routed) state has
+    already moved to Match/Settled (confirmed in a live screenshot). Added
+    an inline warning in the classic disclosure when the market is
+    currently delegated, rather than touching `SealedOrderPanel`'s
+    deliberately-unchanged internals.
+  - Portfolio page (`app/src/app/portfolio/page.tsx`) had the exact same
+    blind spot as PricePanel: zero awareness of `TradingAccount` positions,
+    so a wallet's ER-fast bets/matches/withdrawable balances were invisible
+    on the one page meant to show "what do I hold." Fixing this needed more
+    than copying the PricePanel pattern: TradingAccount is delegatable, so
+    a naive base-only `getProgramAccounts` scan (the pattern
+    `listPositionsByOwner`/`listSealedOrdersByOwner` correctly use, since
+    Position/SealedOrder never delegate) would silently miss every
+    currently-delegated account, since its base copy is owned by the
+    Delegation Program at that point. `listTradingAccountsByOwner`
+    (`app/src/lib/positions.ts`) instead resolves each known market's
+    current ledger via the router and does one targeted read there —
+    O(markets) round trips, correct at hackathon scale; a real cross-ledger
+    index (the still-pending off-chain-services item) is the honest
+    long-term answer if the market count ever gets large.
+  - Also corrected `README.md` and this file: an earlier README draft
+    claimed ER work was "held back from the submission... kept as roadmap"
+    — true of the pre-Phase-1 de-risk spike, false once Phase 1 shipped,
+    left uncorrected until this audit caught it. The TEE/PER claim in that
+    same paragraph was NOT touched, since it's still accurate — that track
+    genuinely remains a de-risk spike, unlike ER.

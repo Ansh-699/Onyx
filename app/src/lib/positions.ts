@@ -16,14 +16,19 @@
 //    83    13  _reserved
 
 import { Buffer } from "buffer";
-import { PublicKey } from "@solana/web3.js";
+import { type Connection, PublicKey } from "@solana/web3.js";
 import {
   ONYX_PROGRAM_ID,
   DISC_SEALED_ORDER,
   getConnection,
   decodeSealedOrder,
+  decodeTradingAccount,
+  listMarkets,
+  tradingAccountPda,
   type OnChainSealedOrder,
+  type OnChainTradingAccount,
 } from "./onchain";
+import { resolveConnection } from "./erRouting";
 
 /** Mirrors DISC_POSITION in programs/onyx/src/constants.rs. */
 export const DISC_POSITION = 3;
@@ -79,4 +84,66 @@ export async function listSealedOrdersByOwner(owner: PublicKey): Promise<OnChain
   return accounts
     .map(({ pubkey, account }) => decodeSealedOrder(pubkey, account.data))
     .filter((o): o is OnChainSealedOrder => o !== null);
+}
+
+export interface OwnedTradingAccount extends OnChainTradingAccount {
+  marketPda: string;
+}
+
+/**
+ * Every TradingAccount a wallet owns, across every market — deliberately
+ * NOT a single base-only getProgramAccounts scan like the two listers
+ * above, because TradingAccount (unlike Position/SealedOrder, which never
+ * move) can be delegated to an Ephemeral Rollup. A market currently
+ * delegated has its base-layer copy owned by the Delegation Program, not
+ * ONYX, so a base-only program-owner filter would silently skip every
+ * TradingAccount that's mid-flight on an ER right now — the exact same
+ * blind spot PricePanel's "Locked" stat had (see MarketDetail.tsx history)
+ * before it was found and fixed, just at the portfolio-wide scale instead
+ * of one market.
+ *
+ * First version of this function resolved each market's connection then
+ * issued one getAccountInfo PER market in parallel — correct, but it
+ * reliably 429s public devnet RPC once the market count gets past a couple
+ * dozen (confirmed live: real Portfolio page load, real repeated 429s,
+ * ~30s+ of retry backoff). Fixed by grouping markets by their RESOLVED
+ * connection endpoint (almost always just "base", since only markets
+ * currently mid-ER-lifecycle differ) and issuing ONE batched
+ * getMultipleAccountsInfo per distinct ledger instead of one call per
+ * market — O(distinct ledgers in use) RPC calls, not O(markets). A real
+ * cross-ledger index (services/ingestion) is still the honest long-term
+ * answer if a single ledger's own market count ever gets large enough to
+ * need batching the batch.
+ */
+export async function listTradingAccountsByOwner(owner: PublicKey): Promise<OwnedTradingAccount[]> {
+  const base = getConnection();
+  const markets = await listMarkets();
+
+  const resolved = await Promise.all(
+    markets.map(async (m) => {
+      const marketPk = new PublicKey(m.pda);
+      const { connection } = await resolveConnection(marketPk, base);
+      return { marketPda: m.pda, connection, pda: tradingAccountPda(marketPk, owner) };
+    }),
+  );
+
+  const groups = new Map<string, { connection: Connection; items: { marketPda: string; pda: PublicKey }[] }>();
+  for (const r of resolved) {
+    const key = r.connection.rpcEndpoint;
+    if (!groups.has(key)) groups.set(key, { connection: r.connection, items: [] });
+    groups.get(key)!.items.push({ marketPda: r.marketPda, pda: r.pda });
+  }
+
+  const found: OwnedTradingAccount[] = [];
+  await Promise.all(
+    [...groups.values()].map(async ({ connection, items }) => {
+      const infos = await connection.getMultipleAccountsInfo(items.map((i) => i.pda));
+      infos.forEach((info, i) => {
+        if (!info) return;
+        const decoded = decodeTradingAccount(items[i]!.pda, info.data);
+        if (decoded) found.push({ ...decoded, marketPda: items[i]!.marketPda });
+      });
+    }),
+  );
+  return found;
 }

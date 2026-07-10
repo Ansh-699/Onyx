@@ -18,12 +18,18 @@ import {
   STATUS_SETTLED,
   STATUS_CLAIMED,
   ORDER_STATUS_NAMES,
+  TRADING_STATUS_NAMES,
+  TRADING_STATUS_LOCKED,
+  TRADING_STATUS_REVEALED,
+  TRADING_STATUS_MATCHED,
   explorerTxUrl,
 } from "@/lib/onchain";
 import {
   type OnChainPosition,
+  type OwnedTradingAccount,
   listPositionsByOwner,
   listSealedOrdersByOwner,
+  listTradingAccountsByOwner,
 } from "@/lib/positions";
 import { buildClaimIx } from "@/lib/instructions";
 import { friendlyError } from "@/lib/errors";
@@ -87,6 +93,17 @@ function orderStatusTone(status: number): string | undefined {
   return undefined;
 }
 
+function tradingStatusTone(status: number): string | undefined {
+  if (status === TRADING_STATUS_LOCKED) return "amber";
+  if (status === TRADING_STATUS_REVEALED) return "accent";
+  if (status === TRADING_STATUS_MATCHED) return "green";
+  return undefined;
+}
+
+function canWithdrawTa(t: OwnedTradingAccount): boolean {
+  return t.available > 0n || (t.status === TRADING_STATUS_MATCHED && !t.claimedWinnings);
+}
+
 // ---- page ----
 
 export default function PortfolioPage() {
@@ -124,6 +141,17 @@ export default function PortfolioPage() {
   const ordersQuery = useQuery({
     queryKey: ["myOrders", owner],
     queryFn: () => listSealedOrdersByOwner(publicKey!),
+    refetchInterval: 15_000,
+    placeholderData: keepPreviousData,
+    enabled: ready,
+  });
+
+  // Fast trading (Ephemeral Rollup) accounts, across every market — see
+  // listTradingAccountsByOwner's own doc comment for why this can't be a
+  // simple base-only getProgramAccounts scan like the two queries above.
+  const tradingAccountsQuery = useQuery({
+    queryKey: ["myTradingAccounts", owner],
+    queryFn: () => listTradingAccountsByOwner(publicKey!),
     refetchInterval: 15_000,
     placeholderData: keepPreviousData,
     enabled: ready,
@@ -168,10 +196,10 @@ export default function PortfolioPage() {
     <>
       <h1>Portfolio</h1>
       <p className={`muted ${styles.intro}`}>
-        Your positions and sealed orders, read live from the ONYX program on
-        devnet — every row is a real{" "}
-        <span className="mono">getProgramAccounts</span> result for your
-        wallet, refreshed every ~15s.
+        Your fast-trade accounts, positions, and sealed orders, read live from
+        the ONYX program on devnet — every row is a real on-chain account for
+        your wallet (routed to whichever ledger, base or Ephemeral Rollup,
+        currently holds each market's state), refreshed every ~15s.
       </p>
     </>
   );
@@ -223,9 +251,58 @@ export default function PortfolioPage() {
       ]
     : [];
 
+  const tas = tradingAccountsQuery.data;
+
   return (
     <>
       {header}
+
+      {/* ---- Fast trading (Ephemeral Rollup) — shown first: this is the
+          default trading flow everywhere else in the app. ---- */}
+      <section className={styles.section}>
+        <h2>Fast trading (Ephemeral Rollup)</h2>
+        {tradingAccountsQuery.isPending ? (
+          <div className={styles.rows} aria-hidden>
+            <div className={`skeleton ${styles.skelRow}`} />
+          </div>
+        ) : tradingAccountsQuery.isError ? (
+          <p className={styles.error}>{friendlyError(tradingAccountsQuery.error)}</p>
+        ) : !tas || tas.length === 0 ? (
+          <div className={styles.empty}>
+            No fast-trade accounts yet — <Link href="/markets">browse markets →</Link>
+          </div>
+        ) : (
+          <div className={styles.rows}>
+            {tas.map((t) => (
+              <div key={t.pda} className={`card ${styles.row}`}>
+                <div className={styles.rowMain}>
+                  <div className={styles.question}>
+                    <Link href={`/market/${t.marketPda}`}>
+                      Market <span className="mono">{shortPda(t.marketPda)}</span>
+                    </Link>
+                  </div>
+                  <div className={styles.sub}>
+                    <span className={styles.amount}>{fmtUsdc(t.deposited)} test-USDC deposited</span>
+                    {t.locked > 0n && <span>{fmtUsdc(t.locked)} locked</span>}
+                    {t.status === TRADING_STATUS_MATCHED && <span>matched {fmtUsdc(t.matchedSize)}</span>}
+                    {t.available > 0n && <span className={styles.amount}>{fmtUsdc(t.available)} withdrawable</span>}
+                  </div>
+                </div>
+                <div className={styles.rowMeta}>
+                  <span className="pill" data-tone={tradingStatusTone(t.status)}>
+                    {TRADING_STATUS_NAMES[t.status] ?? t.status}
+                  </span>
+                  {canWithdrawTa(t) && (
+                    <Link href={`/market/${t.marketPda}`} className="button" data-variant="ghost">
+                      Go withdraw →
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* ---- Positions ---- */}
       <section className={styles.section}>
