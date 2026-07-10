@@ -871,3 +871,72 @@ onyx/
     session in `errors.ts`, just a different string, in a different panel.
     Not fixed yet — flagged for a decision on priority rather than
     unilaterally patched, consistent with "report before fixing."
+
+- [DONE] **Core-functionality gap review, then fixed the two items that
+  didn't require reversing a locked decision or a multi-day redesign.**
+  Asked to look past submission logistics/testing at the actual product:
+  found (1) settlement genuinely only worked for the one bundled demo
+  fixture — no live proof-fetch pipeline existed, just a static captured
+  JSON; (2) `/create` exposed 6 of the on-chain program's stat options and
+  no path to combined two-stat markets, even though the program and
+  `describeMarketPredicate` already supported both. Both fixed; three other
+  identified gaps (one-shot markets vs rolling continuous matching, no real
+  liquidity beyond seeded demo, early-exit/multi-order reversing explicit
+  locked decisions, binary-only outcomes) were deliberately NOT touched —
+  flagged back for a scope decision rather than silently attempted, since
+  they're either large redesigns incompatible with the remaining runway or
+  direct reversals of this session's own earlier locked calls.
+
+  - **`/create` now exposes red cards + combined ADD/SUBTRACT two-stat
+    markets** (`statKeys.ts::pairedStatKey` finds the same-label/same-period
+    counterpart generically, not hardcoded pairs). Disabled for the demo
+    fixture specifically, since its bundled proof only covers one stat.
+    Verified two ways: UI screenshot, then a real browser-driven submission
+    with on-chain bytes confirmed (`statA=5, statB=6, op=ADD`).
+
+  - **General live settlement pipeline** (`txlineSettlementProof.ts` +
+    `/api/settlement-proof/[market]`, same server-only credential-isolation
+    pattern as `/api/scores`/`/api/odds`): given ANY market, reads its real
+    on-chain fixtureId/statAKey/statBKey, finds the right TxLINE `seq` via
+    the same binary-search pattern the live score ticker already uses (keyed
+    on the market's REAL stat keys, not hardcoded to "1"), fetches the full
+    proof, and shapes it for `buildSettleMarketIx`. Verified against
+    multiple real, distinct sandbox fixtures beyond the one bundled demo
+    fixture (18179549, 18179551 confirmed to have real, genuinely
+    progressing — not frozen — data, live-probed before committing to the
+    build).
+    - **Real bug found via this work, unrelated to the new pipeline itself**:
+      `buildSettleMarketIx` had two hardcoded `w.option(null, ...)` writes,
+      always encoding `stat_b`/`op` as `None` in the CPI regardless of a
+      market's real terms — meaning combined two-stat markets (the ones
+      `/create` can now make) were structurally unsettleable even though
+      `txoracle`'s own `validate_stat` fully supports `stat_b: Option<StatTerm>`/
+      `op: Option<BinaryExpression>` at the program level. Fixed by
+      conditionally encoding both from a second `statsToProve`/`statProofs`
+      entry. Confirmed no regression to the already-proven single-stat path
+      first (fresh demo-fixture market, settled via the refactored function,
+      byte-for-byte same encoding for the no-`stat_b` case) before relying on
+      it for anything new.
+    - **Second real bug found by testing against a genuinely different
+      fixture rather than trusting the demo fixture's shape**: `targetTsMs`
+      (the CPI's top-level `ts` arg, used by txoracle for PDA/seed
+      generation) was being read from the response's top-level `ts` field
+      (== `maxTimestamp`) — this happened to work for the bundled demo
+      capture only because it has `updateCount:1` with
+      `minTimestamp===maxTimestamp===ts`, coincidentally satisfying whatever
+      the real requirement is. A live fixture with `updateCount:2` (batched
+      updates, `minTimestamp !== maxTimestamp`) exposed it for real: settling
+      failed with `txoracle`'s own `Custom(6010)`/`TimestampMismatch`
+      ("timestamp provided for seed generation does not match the timestamp
+      in the snapshot payload"). Root-caused empirically (not guessed) by
+      diffing every timestamp field between the working bundled capture and
+      the failing live fetch, forming the hypothesis that `targetTsMs` must
+      equal `summary.updateStats.minTimestamp` specifically, and confirming
+      it by retrying the SAME failed market with only that one field
+      changed — settled successfully. Fixed at the source
+      (`txlineSettlementProof.ts`) rather than patched around.
+    - Verified end-to-end, three real cases, each with its own fresh market
+      and a real on-chain outcome check: a non-demo fixture settling true, a
+      combined two-stat market settling true (3+2=5>4), and a non-demo
+      fixture settling false (1>100) — confirming the pipeline evaluates
+      correctly in both directions, not just "always resolves true."

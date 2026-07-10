@@ -33,6 +33,8 @@ export const IX_REFUND_UNREVEALED = 19;
 export const SIDE_A = 1;
 export const SIDE_B = 2;
 export const OP_NONE = 0xff;
+export const OP_ADD = 0;
+export const OP_SUBTRACT = 1;
 export const CMP_GREATER_THAN = 0;
 export const CMP_LESS_THAN = 1;
 export const CMP_EQUAL_TO = 2;
@@ -128,6 +130,24 @@ export interface ProofNodeJs {
 function writeProofNode(w: Writer, n: ProofNodeJs) {
   w.bytes(Buffer.from(n.hash));
   w.bool(n.isRightSibling);
+}
+
+/** Borsh StatTerm = {stat_to_prove: ScoreStat, event_stat_root: [u8;32], stat_proof: Vec<ProofNode>} (cpi/txoracle.rs). */
+function writeStatTerm(
+  w: Writer,
+  stat: { key: number; value: number; period: number },
+  eventStatRoot: number[],
+  statProof: ProofNodeJs[],
+) {
+  w.u32le(stat.key);
+  w.i32le(stat.value);
+  w.i32le(stat.period);
+  w.bytes(Buffer.from(eventStatRoot));
+  w.vec(statProof, writeProofNode);
+}
+/** Borsh BinaryExpression: Add=0, Subtract=1 (cpi/txoracle.rs). */
+function writeBinaryExpression(w: Writer, op: number) {
+  w.u8(op === OP_ADD ? 0 : 1);
 }
 
 // ---- PDA derivation ----
@@ -351,10 +371,26 @@ export function buildSettleMarketIx(params: {
   fixture: CapturedProofFixture;
   threshold: bigint;
   predicate: number;
+  /**
+   * Combined ADD/SUBTRACT-over-two-stats markets (see statKeys.ts's
+   * pairedStatKey): pass OP_ADD/OP_SUBTRACT and `fixture.payload` must carry
+   * a SECOND entry in both `statsToProve` and `statProofs` (index 1) for the
+   * paired stat — the live settlement fetch requests both stat keys in one
+   * call, since `eventStatRoot` is shared across every stat in a response
+   * (confirmed live: requesting statKeys="1,2" returns ONE eventStatRoot
+   * covering both, with statProofs[0]/statProofs[1] as the two per-stat
+   * paths through it — not two separate roots). Omit for a single-stat
+   * market (the only kind this builder supported before this was added).
+   */
+  op?: number;
 }): { ix: TransactionInstruction; computeIx: TransactionInstruction; rootsPda: PublicKey } {
-  const { submitter, market, fixture, threshold, predicate } = params;
+  const { submitter, market, fixture, threshold, predicate, op } = params;
   const p = fixture.payload;
-  const stat = p.statsToProve[0]!;
+  const statA = p.statsToProve[0]!;
+  const statB = op !== undefined ? p.statsToProve[1] : undefined;
+  if (op !== undefined && !statB) {
+    throw new Error("buildSettleMarketIx: op given but fixture.payload has no second stat (statsToProve[1])");
+  }
   const rootsPda = PublicKey.findProgramAddressSync(
     [SEED_DAILY_SCORES_ROOTS, u16le(fixture.epochDay)],
     TXORACLE_PROGRAM_ID,
@@ -371,13 +407,9 @@ export function buildSettleMarketIx(params: {
   w.vec(p.mainTreeProof, writeProofNode);
   w.i32le(Number(threshold));
   w.u8(predicate);
-  w.u32le(stat.key);
-  w.i32le(stat.value);
-  w.i32le(stat.period);
-  w.bytes(Buffer.from(p.eventStatRoot));
-  w.vec(p.statProofs[0]!, writeProofNode);
-  w.option<never>(null, () => {});
-  w.option<never>(null, () => {});
+  writeStatTerm(w, statA, p.eventStatRoot, p.statProofs[0]!);
+  w.option(statB, (ww, s) => writeStatTerm(ww, s, p.eventStatRoot, p.statProofs[1]!));
+  w.option(op, writeBinaryExpression);
   const settleArgs = w.build();
 
   const computeIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 });

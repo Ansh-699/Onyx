@@ -270,6 +270,20 @@ iteration to get right:
   only check that the mint matches `Config.usdc_mint`; swapping in a real
   USDC mint address on mainnet requires no program changes.
   "Devnet or mainnet, either is allowed" per the track's own guidance.
+- **Settlement is general, not pinned to one fixture.** `SettleClaimPanel`
+  fetches a live proof from TxLINE's own `/scores/stat-validation` for
+  whatever fixture and stat(s) a market's own on-chain terms specify (see
+  [`app/src/lib/txlineSettlementProof.ts`](app/src/lib/txlineSettlementProof.ts)
+  + [`app/src/app/api/settlement-proof/`](app/src/app/api/settlement-proof/)),
+  including combined two-stat ADD/SUBTRACT predicates (e.g. "total corners
+  across both teams") — `buildSettleMarketIx` now conditionally encodes the
+  CPI's optional `stat_b`/`op` args instead of always omitting them. Verified
+  live against multiple real, distinct fixtures beyond the one bundled demo
+  fixture, both a single-stat and a combined two-stat market, both a
+  predicate that resolves true and one that resolves false. The demo fixture
+  keeps its bundled static proof too (as a fallback that needs no live
+  TxLINE API call at settlement time), it's just no longer the *only*
+  fixture that can settle.
 - **The client-side Merkle leaf re-derivation is labeled experimental.**
   Settlement trust never depended on it — it comes from `validate_stat`'s
   own on-chain return value and log lines, checkable by anyone. An

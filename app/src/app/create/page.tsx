@@ -21,23 +21,18 @@ import {
 import { WalletButton } from "@/components/WalletButton";
 import styles from "./create.module.css";
 
-// The one fixture with a REAL captured oracle proof bundled in this repo
-// (fixtures/scores-validation.sample.json) — the only fixture id a market
-// created here can actually be settled against via a real validate_stat CPI.
-// statKey MUST be 1 (the captured proof's actual `statsToProve[0].key`, NOT
-// any of the illustrative STAT_KEYS.* mock values) — settle_market's own CPI
-// args are built straight from the captured fixture's real key
-// (instructions.ts::buildSettleMarketIx), and the program does NOT
-// cross-check market.statAKey against them. Using the wrong key here
-// wouldn't fail on-chain; it would silently settle correctly while
-// *displaying* a stat key that has nothing to do with what was actually
-// verified — exactly the kind of inconsistency this project's whole pitch
-// argues against. stat.value=3 in the capture, so threshold=2 with ">" is
-// what makes settle_market resolve deterministically (matches the
-// already-proven devnet L0 run).
+// This fixture has a real BUNDLED oracle proof (fixtures/scores-validation.
+// sample.json) as a fallback settlement path with zero TxLINE-live-API
+// dependency — but it is no longer the only settleable fixture.
+// SettleClaimPanel now fetches a LIVE proof from TxLINE's own
+// /scores/stat-validation for any market's actual on-chain fixtureId/stat
+// terms (see /api/settlement-proof + txlineSettlementProof.ts), verified
+// live against several other real fixtures the sandbox has data for. This
+// demo fixture's statKey stays pinned to 1 to match the bundled fallback
+// capture specifically, not because it's the only stat that can ever settle.
 const DEMO_FIXTURE = {
   fixtureId: 18179550,
-  label: "World Cup demo fixture (real oracle proof — settles live)",
+  label: "World Cup demo fixture (bundled fallback proof — always settles, even offline)",
   statKey: 1,
   defaultThreshold: 2,
 };
@@ -261,12 +256,19 @@ export default function CreatePage() {
           </strong>
           . Orders are sealed for {commitMinutes || "?"} min, then revealed
           for {revealMinutes || "?"} min before the batch match runs.
-          {isDemoFixture && (
+          {isDemoFixture ? (
             <>
               {" "}
-              This fixture has a real captured oracle proof (value=3), so{" "}
-              <code>settle_market</code> will genuinely resolve this market
-              via a live <code>validate_stat</code> CPI.
+              This fixture also has a real proof BUNDLED in this build, so{" "}
+              <code>settle_market</code> can resolve this market even if
+              TxLINE&apos;s live API is unreachable at settlement time.
+            </>
+          ) : (
+            <>
+              {" "}
+              <code>settle_market</code> fetches a live proof from
+              TxLINE&apos;s own <code>validate_stat</code> data for this
+              fixture at settlement time — real oracle CPI, not simulated.
             </>
           )}
         </div>

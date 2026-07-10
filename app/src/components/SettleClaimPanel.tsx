@@ -22,15 +22,23 @@ import { WalletButton } from "@/components/WalletButton";
 import styles from "@/components/market/TradePanel.module.css";
 
 const DEMO_FIXTURE_ID = 18179550;
-// The bundled proof only proves ONE stat (statsToProve[0]). settle_market's
-// CPI args are built straight from that captured stat, NOT cross-checked
-// against Market.statAKey/statBKey/op on-chain (see settle_market.rs) -- so
-// this button must only ever appear for markets whose predicate is exactly
-// "this one proven stat vs threshold" (statBKey=0, op=NONE, statAKey
-// matching the capture). Any other shape (e.g. a combined ADD-of-two-stats
-// market) would settle against the WRONG stat while looking legitimate --
-// exactly the kind of silent misrepresentation this project argues against.
+// The bundled proof only proves ONE stat (statsToProve[0]). It's only a
+// faithful proof for a market whose predicate is EXACTLY "this one proven
+// stat vs threshold" (statBKey=0, op=NONE, statAKey matching the capture) --
+// settle_market's CPI args aren't cross-checked against Market.statAKey/
+// statBKey/op on-chain (see settle_market.rs), so using the wrong proof for
+// a market's real predicate would settle against the WRONG stat while
+// looking legitimate. Any OTHER market (different fixture, or a combined
+// two-stat predicate) now goes through /api/settlement-proof instead, which
+// fetches a live proof for that market's own on-chain terms specifically --
+// see txlineSettlementProof.ts.
 const PROVABLE_STAT_KEY = (capturedProof as unknown as CapturedProofFixture).payload.statsToProve[0]!.key;
+
+interface LiveProofResult {
+  ok: boolean;
+  fixture?: CapturedProofFixture;
+  reason?: string;
+}
 
 export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
   const queryClient = useQueryClient();
@@ -40,54 +48,50 @@ export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
   const [error, setError] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
 
-  const provable =
+  const usesBundledProof =
     Number(market.fixtureId) === DEMO_FIXTURE_ID &&
     market.statBKey === 0 &&
     market.op === OP_NONE &&
     market.statAKey === PROVABLE_STAT_KEY;
 
   const settled = market.status === STATUS_SETTLED || market.status === STATUS_CLAIMED;
-
-  if (!provable) {
-    const reason =
-      Number(market.fixtureId) !== DEMO_FIXTURE_ID
-        ? "this market's fixture doesn't have a captured oracle proof bundled in this build"
-        : "this market's predicate combines stats the bundled proof doesn't cover (only a single stat[" +
-          PROVABLE_STAT_KEY +
-          "] proof is captured)";
-    return (
-      <div className={`card ${styles.wrap}`}>
-        <div className={styles.title}>Settlement</div>
-        <p className={styles.blurb}>
-          <code>settle_market</code> can&apos;t be triggered from the UI here — {reason}. It still works
-          on-chain given the right proof payload from TxLINE&apos;s <code>/scores/stat-validation</code>{" "}
-          endpoint. Create a market on the demo fixture with the default predicate from{" "}
-          <Link href="/create">/create</Link> to see a live settlement.
-        </p>
-        {settled && (
-          <p className={styles.txRow}>
-            <Link href={`/receipt/${market.pda}`}>View verifiable receipt →</Link>
-          </p>
-        )}
-      </div>
-    );
-  }
-
   const canSettle = market.status === STATUS_OPEN || market.status === STATUS_LIVE;
   const canClaim = market.status === STATUS_SETTLED;
 
   async function onSettle() {
     if (!publicKey) return;
     setError(null);
-    setBusy("Settling (real validate_stat CPI)…");
     try {
+      let fixture: CapturedProofFixture;
+      let op: number | undefined;
+
+      if (usesBundledProof) {
+        setBusy("Settling (real validate_stat CPI)…");
+        fixture = capturedProof as unknown as CapturedProofFixture;
+        op = undefined;
+      } else {
+        setBusy("Fetching live settlement proof from TxLINE…");
+        const res = await fetch(`/api/settlement-proof/${market.pda}`);
+        const body = (await res.json()) as LiveProofResult;
+        if (!body.ok || !body.fixture) {
+          throw new Error(
+            body.reason ??
+              "TxLINE has no settlement proof available for this market yet — retry once the fixture has real recorded data.",
+          );
+        }
+        fixture = body.fixture;
+        op = market.op !== OP_NONE ? market.op : undefined;
+        setBusy("Settling (real validate_stat CPI, live-fetched proof)…");
+      }
+
       const marketPk = new PublicKey(market.pda);
       const { ix, computeIx } = buildSettleMarketIx({
         submitter: publicKey,
         market: marketPk,
-        fixture: capturedProof as unknown as CapturedProofFixture,
+        fixture,
         threshold: market.threshold,
         predicate: market.predicate,
+        op,
       });
       const tx = new Transaction().add(computeIx, ix);
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
@@ -137,8 +141,11 @@ export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
         <span className="pill">{STATUS_NAMES[market.status] ?? market.status}</span>
       </div>
       <p className={styles.blurb}>
-        This CPIs into the sponsor&apos;s own <code>validate_stat</code> against the real captured proof —
-        the outcome is decided by the oracle, not by ONYX.
+        This CPIs into the sponsor&apos;s own <code>validate_stat</code> against a real proof — the outcome
+        is decided by the oracle, not by ONYX.{" "}
+        {usesBundledProof
+          ? "Uses this build's bundled captured proof."
+          : "Fetches a live proof from TxLINE's /scores/stat-validation for this exact market's fixture and stat at settlement time."}
       </p>
       {!connected && <WalletButton />}
       {connected && (canSettle || canClaim) && (
