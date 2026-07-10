@@ -1041,3 +1041,50 @@ onyx/
 - Next: Phase B (deploy upgrade + base-only devnet lifecycle with
   lamport-exact vault reconciliation at BOTH checkpoints) — pending the
   Gate 1 report-back.
+
+## 2026-07-11 — AMM Phase B COMPLETE: upgrade deployed, base devnet lifecycle SOLVENT to the lamport at both checkpoints
+
+- **Deploy**: programdata was 212,448 B vs the new 226,056 B binary — first
+  `solana program extend` of the project (+20,000 B; the first deploy
+  attempt failed for funds because extend rent is ~6,966 lamports/BYTE ≈
+  0.139 SOL, not the 1000×-smaller figure naively assumed; topped the
+  deployer up 0.4 SOL from the project's own test-bettor wallet and
+  redeployed). Upgrade sig `28yPJ7yYv7FgTc5QANW2a6pJMs5YEkXuSR1GPZ1S4V3ncJJbb6HJriH6oTJngPLSdXXtg673aoWahBdE4hKujAvt`,
+  now Last Deployed In Slot 475357763, data length 232,448 B.
+- **Sealed-flow regression on the UPGRADED binary** (gate discipline): full
+  `verify-flow.ts` run — open_sealed→submit→house-counter→reveal→match→
+  settle (real validate_stat CPI)→claim, user +1,990,000 exactly per the
+  documented formula. Market `5pV9nvUffLtWZkxHAfziMwDX7716SJcyFvjdJezp48FX`,
+  settle `5LEG6dUzAjJLjUVJfbqq…`, claim `25GA8SV9uj5MWuxh9g8R…`. The 8 new
+  instructions broke nothing.
+- **`app/scripts/amm_base_lifecycle.ts`** (new, permanent): full base-layer
+  AMM lifecycle on market `8PAJAkwZKxao5NCLbZpuaGZpJVi5b2gKc8Gf71EXZheg` —
+  open_market (plain) → create_amm_pool (1.0 tUSDC seed, 1% fee) → 2 users
+  open+deposit (0.4 each) → 6 interleaved swaps (both users/sides/
+  directions) → settle via the LIVE TxLINE pipeline → redeem×2 →
+  withdraw_lp. 17 sigs total, all in the script output.
+- **The two load-bearing results**:
+  - **CHECKPOINT 1** (after swaps): vault 1,800,000 ==
+    Σusdc_available(271,676+242,445) + sets_outstanding(1,280,727) +
+    fees(5,152) EXACTLY; ΣtokensA+reserveA == sets == ΣtokensB+reserveB;
+    vault untouched by all 6 swaps. Additionally the entire on-chain pool+
+    position state equalled an off-chain BigInt simulation unit-for-unit —
+    and every swap's `min_out` was set to the EXACT simulated output, so
+    any on-chain/quote-engine divergence would have reverted the swap:
+    the on-chain math and the client math are provably identical.
+  - **CHECKPOINT 2** (post settle+redeem+LP): **vault drained to exactly
+    0**; payouts alice 419,246 + bob 403,329 + lp 977,425 == 1,800,000
+    deposited; each wallet's payout individually matched its predicted
+    usdc_available + winning-tokens (users) / winning-reserve + fees (LP).
+    LP P&L −22,575 (adverse selection, real and disclosed).
+- **Slippage guard proven on-chain**: deliberate buy with min_out =
+  expected+1 landed and reverted Custom(6026)/SlippageExceeded, sig
+  `5d7vh1NkStEeGbRMgKE9JW9mRLbLE4RmxmUjNWXP3N5z7TUqBqBdutfm7wF8rAqau4cycFXtDfhiRDPsGPLU1Hvr`.
+- **Live-pipeline settle, not bundled**: proof fetched at seq 1316 (the
+  bundled demo capture is seq 1315 — the fetch found a NEWER snapshot,
+  confirming genuinely live retrieval), settle sig
+  `3exyJQKK8VQBEW4jdHtJ2UC33vv9nYQSz6KizWDv1x3uDYy6DKHnQgNj3ixEjfsWhLXpYpJSkc236mqTr7hi1D8x`.
+- Gate: **Phase B PASS**. Next: Phase C (ER path: delegate market+pool+
+  positions, genuinely concurrent real swaps under Promise.all with the
+  3-assertion audit incl. the landing-order replay, undelegate, settle,
+  post-settlement reconciliation) — pending report-back.
