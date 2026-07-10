@@ -720,3 +720,37 @@ onyx/
     left uncorrected until this audit caught it. The TEE/PER claim in that
     same paragraph was NOT touched, since it's still accurate — that track
     genuinely remains a de-risk spike, unlike ER.
+
+- [DONE] **mollusk-svm SBF test coverage for the two highest-risk untested
+  ER-fast instructions (25 -> 44 host tests).** None of the 9 new ER-fast
+  instructions had dedicated unit tests before this — proven only by live
+  devnet scripts. Rather than mechanically pad coverage onto all 9
+  (inconsistent with this codebase's own established pattern: unit tests are
+  reserved for `refund_expired`-tier custody-critical/logic-dense code, not
+  every account-mutating instruction — `submit_sealed_order`/`reveal_order`/
+  `run_batch_match` etc. have none either), applied the same bar `refund_expired`
+  was held to and picked the two ER-fast instructions that actually meet it:
+  - `withdraw_trading.rs` (10 tests): the other real-money-out instruction
+    (real-money-in is `deposit_trading`, lower-risk — a plain transfer with
+    no branching payout math). Covers both payout legs independently and
+    combined, the double-payout guard on the winnings leg, the losing-side
+    case, and all the reject paths (wrong owner/market, still-delegated,
+    vault-underfunded, nothing-to-withdraw, double-withdraw-after-claimed).
+    One test — winnings math — deliberately reuses the exact numbers from
+    the classic flow's README-documented claim example (1,000,000 stake,
+    matching pools, 1% fee -> 1,990,000) as a byte-for-byte cross-check that
+    withdraw_trading really does reuse claim.rs's formula, not just something
+    close to it.
+  - `run_batch_match_fast.rs` (9 tests): the batch-inclusion completeness
+    check (previously live-tested only via `er_omission_attack_test.ts`) and
+    the partial-fill unmatched-locked-release fix (the real bug this exact
+    file caught by inspection earlier this session), now covered in
+    isolation. The duplicate-account-padding test is the one worth noting:
+    it required confirming mollusk-svm actually aliases two same-pubkey
+    account-meta entries to the same underlying account memory the way real
+    Solana transaction processing does — it does, confirmed live by the test
+    passing for the RIGHT reason (second occurrence's pre-write status
+    re-check sees `Matched`, written by the first occurrence), not by luck.
+  Both test files caught a real authoring mistake in the process (a
+  withdraw_trading "wrong owner" test that accidentally passed a matching
+  owner on its first assertion) — fixed before either suite was trusted.

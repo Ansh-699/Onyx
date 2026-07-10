@@ -336,10 +336,16 @@ To rebuild and redeploy the on-chain program yourself:
 ```bash
 cd programs/onyx
 cargo build-sbf
-cargo test                                      # 25 host tests, incl. a real
-                                                 # mollusk-svm SBF execution of
-                                                 # refund_expired with a
-                                                 # simulated Clock
+cargo test                                      # 44 host tests, incl. real
+                                                 # mollusk-svm SBF execution
+                                                 # (loads the actual compiled
+                                                 # onyx.so) of refund_expired,
+                                                 # withdraw_trading, and
+                                                 # run_batch_match_fast --
+                                                 # the fund-custody-critical
+                                                 # and completeness-check
+                                                 # logic, with a simulated
+                                                 # Clock so no real waiting
 solana program deploy target/deploy/onyx.so \
   --program-id 4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB \
   --url https://api.devnet.solana.com
