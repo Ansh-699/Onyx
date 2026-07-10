@@ -259,6 +259,8 @@
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 0.82rem;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .txRow {
@@ -309,6 +311,15 @@
 }
 .classicBody {
   margin-top: 10px;
+}
+.classicWarning {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--amber-dim);
+  color: var(--amber);
+  font-size: 0.78rem;
+  overflow-wrap: break-word;
 }
 
 @media (max-width: 480px) {

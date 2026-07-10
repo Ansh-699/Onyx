@@ -129,7 +129,7 @@ export function MarketDetail({ pda }: { pda: string }) {
 
       <div className={styles.cols} data-sealed={sealed}>
         <div className={styles.areaPrice}>
-          <PricePanel market={market} />
+          <PricePanel market={market} connection={query.connection} />
         </div>
         {sealed && (
           <div className={styles.areaTrade}>
@@ -137,6 +137,14 @@ export function MarketDetail({ pda }: { pda: string }) {
             <details className={erStyles.classicToggle}>
               <summary>Show classic sealed-order flow (non-ER, always available)</summary>
               <div className={erStyles.classicBody}>
+                {query.isDelegated && (
+                  <p className={erStyles.classicWarning}>
+                    This market is currently delegated to the Ephemeral Rollup for fast trading. The classic flow
+                    below only reads/writes base devnet, so it&apos;s seeing a snapshot frozen at delegation time —
+                    avoid placing new classic orders until the market moves back to base (see the fast-trade panel
+                    above).
+                  </p>
+                )}
                 <SealedOrderPanel market={market} />
               </div>
             </details>

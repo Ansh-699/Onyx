@@ -79,13 +79,23 @@ export function friendlyError(err: unknown): string {
  * a clear, actionable message when detected, or null if this doesn't look
  * like that — callers should fall back to `friendlyError` in that case.
  *
- * Two real, distinct shapes, both observed live during Phase 0/1 testing:
+ * Three real, distinct shapes, all observed live during Phase 0/1 testing:
  *  1. Sent to the ER for an account that isn't (or is no longer) delegated
  *     there. The ER rejects this at the validator level, before program
  *     logic even runs — confirmed live: "InvalidAccountForFee" as the
  *     confirmTransaction err, with the log line "Feepayer ... was modified
  *     without being delegated", and `solana confirm` against the ER prints
  *     "This account may not be used to pay transaction fees".
+ *  1b. Same class, different Solana runtime TransactionError variant:
+ *     "InvalidWritableAccount" — observed live in the self-audit pass by
+ *     racing a real out-of-band undelegate against a still-open browser tab
+ *     whose cached router response hadn't caught up yet, then clicking
+ *     Cancel. The ER rejected the write with this exact string (not
+ *     InvalidAccountForFee that time), and since it wasn't in either
+ *     pattern below it fell all the way through to friendlyError's raw
+ *     fallback — a real "Transaction <sig> failed: ..." string overflowed
+ *     the error box in the UI. Confirmed distinct enough (never seen outside
+ *     this scenario) to intercept alongside case 1's message.
  *  2. Sent to base for an account that's STILL delegated (so base's copy is
  *     zeroed and owned by the Delegation Program, not this program) —
  *     surfaces as OnyxError::InvalidOwner (7001) from this program's own
@@ -105,7 +115,11 @@ export function classifyWrongLedger(err: unknown): string | null {
       ? `${err.message}\n${(err as Error & { logs?: string[] }).logs?.join("\n") ?? ""}`
       : String(err);
 
-  if (/InvalidAccountForFee|was modified without being delegated|may not be used to pay transaction fees/i.test(text)) {
+  if (
+    /InvalidAccountForFee|was modified without being delegated|may not be used to pay transaction fees|InvalidWritableAccount/i.test(
+      text,
+    )
+  ) {
     return "This account isn't delegated to the Ephemeral Rollup right now (it may have just undelegated, or the market hasn't been enabled for fast trading yet). Refreshing and retrying in a moment should fix this.";
   }
 

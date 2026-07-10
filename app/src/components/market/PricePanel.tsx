@@ -8,13 +8,16 @@
 // exists) instead of a fabricated curve.
 
 import { useMemo } from "react";
+import type { Connection } from "@solana/web3.js";
 import {
   type OnChainMarket,
   PHASE_MATCHED,
   PHASE_NONE,
+  TRADING_STATUS_LOCKED,
+  TRADING_STATUS_REVEALED,
   priceToPercent,
 } from "@/lib/onchain";
-import { useSealedOrders } from "@/lib/hooks";
+import { useSealedOrders, useTradingAccountsForMarket } from "@/lib/hooks";
 import { fmtUsdc } from "./format";
 import styles from "./PricePanel.module.css";
 
@@ -28,25 +31,42 @@ function yFor(pct: number): number {
   return PAD_Y + ((100 - pct) / 100) * (CHART_H - PAD_Y * 2);
 }
 
-export function PricePanel({ market }: { market: OnChainMarket }) {
+export function PricePanel({ market, connection }: { market: OnChainMarket; connection: Connection }) {
   const total = market.totalSideA + market.totalSideB;
   const hasPool = total > 0n;
   const sideAPct = hasPool ? (Number(market.totalSideA) / Number(total)) * 100 : null;
 
-  // "Volume" above is Market.total_side_a/b — written ONLY by run_batch_match,
-  // from matched size (run_batch_match.rs:195-200). Real collateral that's
-  // been committed (and for revealed orders, escrowed against a known side)
-  // but hasn't cleared a batch yet is invisible in that figure — a market
-  // can have real locked tUSDC and still read "Volume: 0", which is honest
-  // but incomplete. Surface it separately, never folded into Volume itself.
+  // "Volume" above is Market.total_side_a/b — written ONLY by run_batch_match
+  // / run_batch_match_fast, from matched size. Real collateral that's been
+  // committed (and for revealed orders, escrowed against a known side) but
+  // hasn't cleared a batch yet is invisible in that figure — a market can
+  // have real locked tUSDC and still read "Volume: 0", which is honest but
+  // incomplete. Surface it separately, never folded into Volume itself.
+  //
+  // Two independent order systems can both have real locked collateral on
+  // the SAME market (the classic SealedOrder flow, always base-only; the
+  // ER-fast TradingAccount flow, base-or-ER depending on delegation) — this
+  // stat must sum BOTH or it silently under-reports on any market using the
+  // now-default ER-fast flow. Caught by re-reading this file after building
+  // ErTradingPanel: it only ever queried useSealedOrders.
   const isSealed = market.phase !== PHASE_NONE;
   const ordersQuery = useSealedOrders(isSealed ? market.pda : "");
-  const lockedCollateral = useMemo(() => {
+  const classicLocked = useMemo(() => {
     const orders = ordersQuery.data ?? [];
     return orders
       .filter((o) => o.status === 0 || o.status === 1) // Locked or Revealed — not yet Matched/Refunded
       .reduce((sum, o) => sum + o.collateralLocked, 0n);
   }, [ordersQuery.data]);
+
+  const tradingAccountsQuery = useTradingAccountsForMarket(isSealed ? market.pda : "", connection);
+  const fastLocked = useMemo(() => {
+    const tas = tradingAccountsQuery.data ?? [];
+    return tas
+      .filter((t) => t.status === TRADING_STATUS_LOCKED || t.status === TRADING_STATUS_REVEALED)
+      .reduce((sum, t) => sum + t.locked, 0n);
+  }, [tradingAccountsQuery.data]);
+
+  const lockedCollateral = classicLocked + fastLocked;
 
   // phase stays Matched even after settle/claim, so a settled market still
   // shows the real clearing price its batch produced.
