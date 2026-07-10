@@ -71,3 +71,48 @@ export function friendlyError(err: unknown): string {
 
   return raw;
 }
+
+/**
+ * Detects the "wrong ledger" failure class specific to ER-fast trading
+ * (docs/ER_TRADING_DESIGN.md §3): a transaction sent to the endpoint that no
+ * longer (or doesn't yet) hold this account's authoritative state. Returns
+ * a clear, actionable message when detected, or null if this doesn't look
+ * like that — callers should fall back to `friendlyError` in that case.
+ *
+ * Two real, distinct shapes, both observed live during Phase 0/1 testing:
+ *  1. Sent to the ER for an account that isn't (or is no longer) delegated
+ *     there. The ER rejects this at the validator level, before program
+ *     logic even runs — confirmed live: "InvalidAccountForFee" as the
+ *     confirmTransaction err, with the log line "Feepayer ... was modified
+ *     without being delegated", and `solana confirm` against the ER prints
+ *     "This account may not be used to pay transaction fees".
+ *  2. Sent to base for an account that's STILL delegated (so base's copy is
+ *     zeroed and owned by the Delegation Program, not this program) —
+ *     surfaces as OnyxError::InvalidOwner (7001) from this program's own
+ *     `is_owned_by(program_id)` checks in open_trading_account.rs /
+ *     deposit_trading.rs / delegate_trading_account.rs / withdraw_trading.rs.
+ *     Deliberately NOT intercepting 6006 (WrongStatus) here even though it
+ *     COULD also stem from a ledger race — that code is reused for many
+ *     unrelated "market isn't in the right state" conditions (e.g. a
+ *     perfectly normal "already settled"), so masking all of them under a
+ *     ledger-specific message would be actively misleading more often than
+ *     it would help; its existing generic message already covers this case
+ *     reasonably.
+ */
+export function classifyWrongLedger(err: unknown): string | null {
+  const text =
+    err instanceof Error
+      ? `${err.message}\n${(err as Error & { logs?: string[] }).logs?.join("\n") ?? ""}`
+      : String(err);
+
+  if (/InvalidAccountForFee|was modified without being delegated|may not be used to pay transaction fees/i.test(text)) {
+    return "This account isn't delegated to the Ephemeral Rollup right now (it may have just undelegated, or the market hasn't been enabled for fast trading yet). Refreshing and retrying in a moment should fix this.";
+  }
+
+  const code = extractProgramErrorCode(err);
+  if (code === 7001) {
+    return "This account's ownership just changed — most likely the market moved between the Ephemeral Rollup and base right as you clicked (someone's transaction may have delegated, undelegated, or matched it). Refresh and try again.";
+  }
+
+  return null;
+}

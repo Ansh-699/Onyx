@@ -110,6 +110,20 @@ pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> 
             return Err(OnyxError::WrongPhase.into()); // duplicate/aliased account -> abort
         }
         let matched = matched_sizes[i];
+        // Release any unmatched portion of `locked` back to `available` --
+        // the TradingAccount equivalent of the base flow's run_batch_match.rs
+        // refund transfer (SealedOrder has no "available" balance, so that
+        // flow does a real SPL Transfer back to the user's ATA; here it's
+        // pure internal bookkeeping, no token movement). This was a real bug
+        // caught by inspection before any UI was built on top of it: without
+        // it, any partial fill leaves the unmatched remainder permanently
+        // stuck -- status becomes Matched, which cancel_order_fast no longer
+        // accepts, so there'd be no recovery path at all.
+        let unmatched = trading.locked().checked_sub(matched).ok_or(OnyxError::ArithmeticOverflow)?;
+        if unmatched > 0 {
+            trading.set_available(trading.available().checked_add(unmatched).ok_or(OnyxError::ArithmeticOverflow)?);
+        }
+        trading.set_locked(0);
         trading.set_matched_size(matched);
         if matched > 0 {
             if trading.side() == SIDE_A {

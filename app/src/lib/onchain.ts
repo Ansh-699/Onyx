@@ -98,6 +98,10 @@ export interface OnChainMarket {
   revealEndTs: bigint;
   phase: number;
   clearingPrice: bigint;
+  /** ER-fast TradingAccount reveals only (byte 127, repurposed from
+   * _reserved — see state/market.rs). The base sealed-order flow
+   * (SealedOrder) never touches this; always 0 for a classic-only market. */
+  revealedCount: number;
 }
 
 export function decodeMarket(pda: PublicKey, data: Buffer): OnChainMarket | null {
@@ -122,6 +126,7 @@ export function decodeMarket(pda: PublicKey, data: Buffer): OnChainMarket | null
     revealEndTs: dv.getBigInt64(110, true),
     phase: data[118]!,
     clearingPrice: dv.getBigUint64(119, true),
+    revealedCount: data[127]!,
   };
 }
 
@@ -202,8 +207,8 @@ export async function listMarkets(): Promise<OnChainMarket[]> {
   return markets;
 }
 
-export async function getMarket(pda: string): Promise<OnChainMarket | null> {
-  const connection = getConnection();
+/** `connection` defaults to base — pass an ER connection to read a delegated market's live state (see erRouting.ts / useRoutedMarket). */
+export async function getMarket(pda: string, connection: Connection = getConnection()): Promise<OnChainMarket | null> {
   const pubkey = new PublicKey(pda);
   const info = await connection.getAccountInfo(pubkey);
   if (!info) return null;
@@ -240,4 +245,100 @@ export function explorerTxUrl(signature: string): string {
 }
 export function explorerAddressUrl(address: string): string {
   return `https://explorer.solana.com/address/${address}?cluster=devnet`;
+}
+
+// =====================================================================
+// TradingAccount (ER-fast trading — additive, see docs/ER_TRADING_DESIGN.md
+// and programs/onyx/src/state/trading_account.rs for the byte layout this
+// mirrors exactly, 176 bytes). Every read here takes an explicit
+// `connection` param (no default) — callers MUST resolve base-vs-ER via
+// erRouting.ts first, since which endpoint holds the authoritative copy
+// depends on this specific account's current delegation state.
+// =====================================================================
+
+export const DISC_TRADING_ACCOUNT = 5;
+export const TRADING_ACCOUNT_LEN = 176;
+
+export const TRADING_STATUS_NONE = 0;
+export const TRADING_STATUS_LOCKED = 1;
+export const TRADING_STATUS_REVEALED = 2;
+export const TRADING_STATUS_MATCHED = 3;
+export const TRADING_STATUS_NAMES: Record<number, string> = {
+  0: "None",
+  1: "Locked",
+  2: "Revealed",
+  3: "Matched",
+};
+
+export interface OnChainTradingAccount {
+  pda: string;
+  owner: string;
+  market: string;
+  deposited: bigint;
+  available: bigint;
+  locked: bigint;
+  commitment: string; // hex, all-zero = no open order
+  side: number;
+  status: number;
+  size: bigint;
+  limitPrice: bigint;
+  matchedSize: bigint;
+  withdrawn: bigint;
+  claimedWinnings: boolean;
+}
+
+export function decodeTradingAccount(pda: PublicKey, data: Buffer): OnChainTradingAccount | null {
+  if (data.length < TRADING_ACCOUNT_LEN || data[0] !== DISC_TRADING_ACCOUNT) return null;
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  return {
+    pda: pda.toBase58(),
+    owner: new PublicKey(data.subarray(8, 40)).toBase58(),
+    market: new PublicKey(data.subarray(40, 72)).toBase58(),
+    deposited: dv.getBigUint64(72, true),
+    available: dv.getBigUint64(80, true),
+    locked: dv.getBigUint64(88, true),
+    commitment: Buffer.from(data.subarray(96, 128)).toString("hex"),
+    side: data[128]!,
+    status: data[129]!,
+    size: dv.getBigUint64(136, true),
+    limitPrice: dv.getBigUint64(144, true),
+    matchedSize: dv.getBigUint64(152, true),
+    withdrawn: dv.getBigUint64(160, true),
+    claimedWinnings: data[169] !== 0,
+  };
+}
+
+export function tradingAccountPda(market: PublicKey, owner: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("trading"), market.toBuffer(), owner.toBuffer()],
+    ONYX_PROGRAM_ID,
+  )[0];
+}
+
+/** One wallet's TradingAccount for a market, read from the given connection (base or ER — caller resolves). Null if it doesn't exist there. */
+export async function getTradingAccount(
+  connection: Connection,
+  market: PublicKey,
+  owner: PublicKey,
+): Promise<OnChainTradingAccount | null> {
+  const pda = tradingAccountPda(market, owner);
+  const info = await connection.getAccountInfo(pda);
+  if (!info) return null;
+  return decodeTradingAccount(pda, info.data);
+}
+
+/** Every TradingAccount for a market, read from the given connection. Used to build the batch-match account list and to undelegate everything at once. */
+export async function listTradingAccountsForMarket(
+  connection: Connection,
+  market: PublicKey,
+): Promise<OnChainTradingAccount[]> {
+  const accounts = await connection.getProgramAccounts(ONYX_PROGRAM_ID, {
+    filters: [
+      { memcmp: { offset: 0, bytes: Buffer.from([DISC_TRADING_ACCOUNT]).toString("base64"), encoding: "base64" } },
+      { memcmp: { offset: 40, bytes: market.toBase58(), encoding: "base58" } },
+    ],
+  });
+  return accounts
+    .map(({ pubkey, account }) => decodeTradingAccount(pubkey, account.data))
+    .filter((t): t is OnChainTradingAccount => t !== null);
 }

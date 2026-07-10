@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { useMarket } from "@/lib/hooks";
+import { useRoutedMarket } from "@/lib/hooks";
 import {
   STATUS_NAMES,
   OUTCOME_NAMES,
@@ -32,8 +32,10 @@ import { SealedOrderPanel } from "@/components/SealedOrderPanel";
 import { SettleClaimPanel } from "@/components/SettleClaimPanel";
 import { PhaseTimeline } from "./PhaseTimeline";
 import { PricePanel } from "./PricePanel";
+import { ErTradingPanel } from "./ErTradingPanel";
 import { shortAddr } from "./format";
 import styles from "./MarketDetail.module.css";
+import erStyles from "./ErTradingPanel.module.css";
 
 const STATUS_TONES: Record<number, string> = {
   [STATUS_OPEN]: "accent",
@@ -46,7 +48,7 @@ const STATUS_TONES: Record<number, string> = {
 };
 
 export function MarketDetail({ pda }: { pda: string }) {
-  const query = useMarket(pda);
+  const query = useRoutedMarket(pda);
   const market = query.data;
 
   // The account genuinely doesn't exist on devnet.
@@ -131,7 +133,13 @@ export function MarketDetail({ pda }: { pda: string }) {
         </div>
         {sealed && (
           <div className={styles.areaTrade}>
-            <SealedOrderPanel market={market} />
+            <ErTradingPanel market={market} isDelegated={query.isDelegated} fqdn={query.fqdn} connection={query.connection} />
+            <details className={erStyles.classicToggle}>
+              <summary>Show classic sealed-order flow (non-ER, always available)</summary>
+              <div className={erStyles.classicBody}>
+                <SealedOrderPanel market={market} />
+              </div>
+            </details>
           </div>
         )}
         <div className={styles.areaSettle}>
