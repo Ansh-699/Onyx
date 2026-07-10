@@ -1,0 +1,95 @@
+.wrap {
+  padding: 16px 12px 12px;
+}
+
+.track {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+/* connector line to the previous step */
+.step::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+}
+.step:first-child::before {
+  display: none;
+}
+.step[data-state="done"]::before,
+.step[data-state="current"]::before {
+  background: var(--accent-strong);
+  opacity: 0.6;
+}
+
+.dot {
+  position: relative;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 650;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-faint);
+}
+.step[data-state="done"] .dot {
+  background: var(--green-dim);
+  border-color: transparent;
+  color: var(--green);
+}
+.step[data-state="current"] .dot {
+  background: var(--accent);
+  border-color: transparent;
+  color: #06121a;
+  box-shadow: 0 0 0 4px var(--accent-dim);
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.step[data-state="todo"] .label {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.sub {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  min-height: 1.1em;
+  padding: 0 4px;
+}
+
+@media (max-width: 480px) {
+  .wrap {
+    padding: 12px 4px 8px;
+  }
+  .label {
+    font-size: 0.72rem;
+  }
+  .sub {
+    font-size: 0.62rem;
+  }
+}

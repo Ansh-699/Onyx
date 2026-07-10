@@ -1,0 +1,92 @@
+.page {
+  min-width: 0;
+}
+
+.back {
+  font-size: 0.85rem;
+  margin: 0 0 4px;
+}
+
+.headRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  min-width: 0;
+}
+
+.pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+}
+
+.raw {
+  font-size: 0.8rem;
+  margin: 6px 0 0;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.meta > span {
+  min-width: 0;
+}
+
+.section {
+  margin-top: 16px;
+}
+
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-areas:
+    "price trade"
+    "settle trade";
+  gap: 16px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.areaPrice {
+  grid-area: price;
+  min-width: 0;
+}
+.areaTrade {
+  grid-area: trade;
+  min-width: 0;
+}
+.areaSettle {
+  grid-area: settle;
+  min-width: 0;
+}
+
+/* Non-sealed (plain join) markets have no trading panel — collapse the
+   trade column instead of leaving a 380px hole. */
+.cols[data-sealed="false"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "price"
+    "settle";
+}
+
+@media (max-width: 940px) {
+  .cols {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "price"
+      "trade"
+      "settle";
+  }
+}

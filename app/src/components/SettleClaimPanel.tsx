@@ -1,12 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction } from "@solana/web3.js";
-import { type OnChainMarket, STATUS_NAMES, getConfigUsdcMint, explorerTxUrl } from "@/lib/onchain";
+import {
+  type OnChainMarket,
+  STATUS_NAMES,
+  STATUS_OPEN,
+  STATUS_LIVE,
+  STATUS_SETTLED,
+  STATUS_CLAIMED,
+  getConfigUsdcMint,
+  explorerTxUrl,
+} from "@/lib/onchain";
 import { buildSettleMarketIx, buildClaimIx, OP_NONE, type CapturedProofFixture } from "@/lib/instructions";
 import capturedProof from "@/lib/fixtures/scores-validation.sample.json";
+import { friendlyError } from "@/lib/errors";
+import { WalletButton } from "@/components/WalletButton";
+import styles from "@/components/market/TradePanel.module.css";
 
 const DEMO_FIXTURE_ID = 18179550;
 // The bundled proof only proves ONE stat (statsToProve[0]). settle_market's
@@ -20,7 +33,7 @@ const DEMO_FIXTURE_ID = 18179550;
 const PROVABLE_STAT_KEY = (capturedProof as unknown as CapturedProofFixture).payload.statsToProve[0]!.key;
 
 export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
-  const router = useRouter();
+  const queryClient = useQueryClient();
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connected } = useWallet();
   const [busy, setBusy] = useState<string | null>(null);
@@ -33,6 +46,8 @@ export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
     market.op === OP_NONE &&
     market.statAKey === PROVABLE_STAT_KEY;
 
+  const settled = market.status === STATUS_SETTLED || market.status === STATUS_CLAIMED;
+
   if (!provable) {
     const reason =
       Number(market.fixtureId) !== DEMO_FIXTURE_ID
@@ -41,18 +56,25 @@ export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
           PROVABLE_STAT_KEY +
           "] proof is captured)";
     return (
-      <p className="muted" style={{ fontSize: "0.85rem" }}>
-        <code>settle_market</code> can&apos;t be triggered from the UI here —{" "}
-        {reason}. It still works on-chain given the right proof payload from
-        TxLINE&apos;s <code>/scores/stat-validation</code> endpoint. Create a
-        market on the demo fixture with the default predicate from{" "}
-        <code>/create</code> to see a live settlement.
-      </p>
+      <div className={`card ${styles.wrap}`}>
+        <div className={styles.title}>Settlement</div>
+        <p className={styles.blurb}>
+          <code>settle_market</code> can&apos;t be triggered from the UI here — {reason}. It still works
+          on-chain given the right proof payload from TxLINE&apos;s <code>/scores/stat-validation</code>{" "}
+          endpoint. Create a market on the demo fixture with the default predicate from{" "}
+          <Link href="/create">/create</Link> to see a live settlement.
+        </p>
+        {settled && (
+          <p className={styles.txRow}>
+            <Link href={`/receipt/${market.pda}`}>View verifiable receipt →</Link>
+          </p>
+        )}
+      </div>
     );
   }
 
-  const canSettle = market.status === 1 || market.status === 2; // Open or Live
-  const canClaim = market.status === 4; // Settled
+  const canSettle = market.status === STATUS_OPEN || market.status === STATUS_LIVE;
+  const canClaim = market.status === STATUS_SETTLED;
 
   async function onSettle() {
     if (!publicKey) return;
@@ -74,9 +96,10 @@ export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
       const sig = await sendTransaction(tx, connection);
       await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
       setLastSig(sig);
-      router.refresh();
+      await queryClient.invalidateQueries({ queryKey: ["market", market.pda] });
+      await queryClient.invalidateQueries({ queryKey: ["markets"] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(friendlyError(err));
     } finally {
       setBusy(null);
     }
@@ -98,40 +121,63 @@ export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
       const sig = await sendTransaction(tx, connection);
       await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
       setLastSig(sig);
-      router.refresh();
+      await queryClient.invalidateQueries({ queryKey: ["market", market.pda] });
+      await queryClient.invalidateQueries({ queryKey: ["markets"] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(friendlyError(err));
     } finally {
       setBusy(null);
     }
   }
 
   return (
-    <div className="card">
-      <div style={{ fontWeight: 600 }}>Settlement</div>
-      <p className="muted" style={{ fontSize: "0.85rem" }}>
-        Status: {STATUS_NAMES[market.status] ?? market.status}. This CPIs into
-        the sponsor's own <code>validate_stat</code> against the real captured
-        proof — the outcome is decided by the oracle, not by ONYX.
-      </p>
-      <div style={{ display: "flex", gap: "0.75rem" }}>
-        {canSettle && (
-          <button className="button" type="button" onClick={onSettle} disabled={!connected || !!busy}>
-            {busy ?? "Settle via validate_stat"}
-          </button>
-        )}
-        {canClaim && (
-          <button className="button" type="button" onClick={onClaim} disabled={!connected || !!busy}>
-            {busy ?? "Claim payout"}
-          </button>
-        )}
+    <div className={`card ${styles.wrap}`}>
+      <div className={styles.head}>
+        <span className={styles.title}>Settlement</span>
+        <span className="pill">{STATUS_NAMES[market.status] ?? market.status}</span>
       </div>
-      {error && <p style={{ color: "var(--danger, #c33)", fontSize: "0.85rem" }}>{error}</p>}
+      <p className={styles.blurb}>
+        This CPIs into the sponsor&apos;s own <code>validate_stat</code> against the real captured proof —
+        the outcome is decided by the oracle, not by ONYX.
+      </p>
+      {!connected && <WalletButton />}
+      {connected && (canSettle || canClaim) && (
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          {canSettle && (
+            <button className="button" type="button" onClick={onSettle} disabled={!!busy}>
+              {busy ? (
+                <>
+                  <span className={styles.spinner} /> {busy}
+                </>
+              ) : (
+                "Settle via validate_stat"
+              )}
+            </button>
+          )}
+          {canClaim && (
+            <button className="button" type="button" onClick={onClaim} disabled={!!busy}>
+              {busy ? (
+                <>
+                  <span className={styles.spinner} /> {busy}
+                </>
+              ) : (
+                "Claim payout"
+              )}
+            </button>
+          )}
+        </div>
+      )}
+      {error && <p className={styles.error}>{error}</p>}
       {lastSig && (
-        <p className="muted" style={{ fontSize: "0.8rem" }}>
+        <p className={styles.txRow}>
           <a href={explorerTxUrl(lastSig)} target="_blank" rel="noreferrer">
             last tx ↗
           </a>
+        </p>
+      )}
+      {settled && (
+        <p className={styles.txRow}>
+          <Link href={`/receipt/${market.pda}`}>View verifiable receipt →</Link>
         </p>
       )}
     </div>
