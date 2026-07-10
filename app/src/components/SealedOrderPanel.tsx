@@ -36,6 +36,7 @@ import {
   buildSubmitSealedOrderIx,
   buildRevealOrderIx,
   buildRunBatchMatchIx,
+  buildRefundUnrevealedIx,
   sealedCommitment,
   orderPda,
   SIDE_A,
@@ -147,6 +148,28 @@ export function SealedOrderPanel({ market }: { market: OnChainMarket }) {
 
   const revealedCount = useMemo(() => orders.filter((o) => o.revealed).length, [orders]);
 
+  // Every one of THIS wallet's orders that is still Locked (never revealed),
+  // read straight from chain — deliberately NOT gated on `saved`/localStorage.
+  // A saved secret can go missing (different browser, cleared storage, or
+  // exactly what happened on a real stuck order this session: committed from
+  // one session, checked from another) — the reveal/reclaim alert below has
+  // to work from on-chain truth alone, or a user in that situation gets no
+  // signal at all that their collateral is sitting there reclaimable.
+  const myUnrevealedOrders = useMemo(() => {
+    const me2 = publicKey?.toBase58();
+    if (!me2) return [];
+    return orders.filter((o) => o.owner === me2 && !o.revealed && o.status === 0);
+  }, [orders, publicKey]);
+  const myUnrevealedWithSecret = useMemo(
+    () => (saved ? myUnrevealedOrders.filter((o) => o.nonce.toString() === saved.nonce) : []),
+    [myUnrevealedOrders, saved],
+  );
+  const myUnrevealedNoSecret = useMemo(
+    () => myUnrevealedOrders.filter((o) => !saved || o.nonce.toString() !== saved.nonce),
+    [myUnrevealedOrders, saved],
+  );
+  const canReclaim = nowSec >= revealEnd; // exact on-chain gate in refund_unrevealed.rs
+
   async function sendAndConfirm(tx: Transaction): Promise<string> {
     if (!publicKey) throw new Error("wallet not connected");
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
@@ -255,6 +278,30 @@ export function SealedOrderPanel({ market }: { market: OnChainMarket }) {
     }
   }
 
+  async function reclaimOrder(orderPdaStr: string) {
+    if (!publicKey) return;
+    setError(null);
+    setBusy("Reclaiming collateral…");
+    try {
+      const usdcMint = await getConfigUsdcMint();
+      if (!usdcMint) throw new Error("config not initialized");
+      const ownerAta = getAssociatedTokenAddressSync(usdcMint, publicKey);
+      const ix = buildRefundUnrevealedIx({
+        payer: publicKey,
+        market: new PublicKey(market.pda),
+        order: new PublicKey(orderPdaStr),
+        ownerAta,
+      });
+      const sig = await sendAndConfirm(new Transaction().add(ix));
+      setLastSig(sig);
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function runMatch() {
     if (!publicKey) return;
     setError(null);
@@ -300,6 +347,84 @@ export function SealedOrderPanel({ market }: { market: OnChainMarket }) {
         reveals after the commit window, then one deterministic uniform-price match runs;
         submission order gives no edge.
       </div>
+
+      {/* Un-missable, phase-independent: checks THIS wallet's on-chain orders
+          directly (not gated on localStorage) so it still fires for a user
+          whose saved secret is gone — the exact situation that stranded a
+          real order. Reveal-urgency (amber) while the window is still open,
+          reclaim (red, always actionable) once it's closed. */}
+      {connected && myUnrevealedOrders.length > 0 && revealOpen && (
+        <div className={styles.alert} data-tone="amber">
+          <div className={styles.alertHead}>
+            {myUnrevealedWithSecret.length > 0
+              ? "Reveal now — window closes soon"
+              : "Unrevealed order — can't be revealed from this browser"}
+          </div>
+          <p className={styles.alertBody}>
+            {myUnrevealedWithSecret.length > 0 ? (
+              <>
+                Reveal window closes in <Countdown targetSec={revealEnd} />. Miss it and this
+                order won&apos;t be matched — your collateral stays locked but reclaimable, it
+                just won&apos;t win anything.
+              </>
+            ) : (
+              <>
+                This wallet has {myUnrevealedNoSecret.length} committed order
+                {myUnrevealedNoSecret.length === 1 ? "" : "s"} on this market, but this browser
+                doesn&apos;t hold the saved secret needed to reveal{" "}
+                {myUnrevealedNoSecret.length === 1 ? "it" : "them"} — side, size, and price are
+                only recoverable from the browser that committed the order, never from chain.{" "}
+                {myUnrevealedNoSecret.length === 1 ? "It" : "They"} won&apos;t be matched. Once
+                the reveal window closes in <Countdown targetSec={revealEnd} />, you can reclaim
+                the collateral here.
+              </>
+            )}
+          </p>
+          {myUnrevealedWithSecret.length > 0 && (
+            <button className="button" type="button" onClick={revealMine} disabled={!!busy}>
+              {busy ? (
+                <>
+                  <span className={styles.spinner} aria-hidden /> {busy}
+                </>
+              ) : (
+                "Reveal now"
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
+      {connected && myUnrevealedOrders.length > 0 && canReclaim && (
+        <div className={styles.alert} data-tone="red">
+          <div className={styles.alertHead}>Collateral reclaimable</div>
+          <p className={styles.alertBody}>
+            The reveal window closed without {myUnrevealedOrders.length === 1 ? "this order" : "these orders"}{" "}
+            being revealed, so {myUnrevealedOrders.length === 1 ? "it" : "they"} never entered
+            matching. Nothing is lost — <code>refund_unrevealed</code> returns full collateral to
+            your own wallet, on-chain-enforced (it can only ever land in the order&apos;s own
+            owner ATA), any time.
+          </p>
+          <div className={styles.alertActions}>
+            {myUnrevealedOrders.map((o) => (
+              <button
+                key={o.pda}
+                className="button"
+                type="button"
+                onClick={() => reclaimOrder(o.pda)}
+                disabled={!!busy}
+              >
+                {busy ? (
+                  <>
+                    <span className={styles.spinner} aria-hidden /> {busy}
+                  </>
+                ) : (
+                  `Reclaim ${fmtUsdc(o.collateralLocked)} tUSDC`
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!connected && <WalletButton />}
 

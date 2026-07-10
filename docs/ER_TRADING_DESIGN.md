@@ -1,6 +1,44 @@
 # ONYX ER Trading — Design Doc (Phase 0)
 
-Status: **draft for review — no feature code written yet.** Everything below is
+Status: **ROADMAP — not part of the submission build. Decision made
+2026-07-10: do not start Phase 1.** This is a major architectural migration
+(new account type, new base-layer deposit/withdraw lifecycle, ER-RPC
+routing in the frontend), it delivers an unscored capability the demo
+doesn't need, and it would eat the runway that demo-critical fixes still
+needed at the time (`refund_unrevealed` wasn't wired into the UI yet). The
+Phase 0 probe finding stands as real, evidence-backed work — the ER
+fee-payer boundary is a genuine architectural constraint worth having
+found and designed around — but this stays a design doc, not code, unless
+and until there's runway to spend on an unscored feature post-submission.
+
+## §6 decisions (confirmed 2026-07-10)
+
+1. **Single enforced order-per-wallet-per-market: yes.** Take the simple
+   `TradingAccount`-per-`(user, market)` shape. It structurally closes the
+   audit's UI-only-order-limit gap, and the multi-slot alternative adds real
+   complexity for little gain in a uniform-price batch model.
+2. **Real-time definition confirmed as written in §5**: short-cadence ER
+   batches + cancel-before-match. Explicitly, permanently **not**
+   instant-sell-a-matched-position — a parimutuel pool has no counterparty
+   for a mid-match sell, and faking one would violate the project's
+   no-fabrication rule and the sealed-batch thesis itself. Don't promise it.
+3. **Additive-only, never replace — and not in the submission build at
+   all.** If this is ever built, `TradingAccount` + the ER-fast instructions
+   live alongside the existing, working, base-only sealed-order flow.
+   Replacing a proven flow before a deadline is exactly the risk this
+   decision avoids. For the submission, this document is the only artifact;
+   zero lines of the proposed schema/instructions are implemented.
+4. **The multi-account undelegate probe (§2's open question) is optional
+   roadmap work**, cheap and zero-risk to run (throwaway script, same shape
+   as `er_order_probe.ts`) whenever this doc is picked back up — not before
+   P0/P1 submission fixes.
+
+Everything below this line is the original Phase 0 research and proposal,
+unchanged, kept as the reference design for whenever this is picked up.
+
+---
+
+Everything below is
 either (a) read directly from the current program source, cited by file:line,
 or (b) verified empirically against live devnet + the MagicBlock ER just now,
 with real tx signatures. Anything neither of those is labeled **UNVERIFIED /

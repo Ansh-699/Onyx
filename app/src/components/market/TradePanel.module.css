@@ -158,6 +158,51 @@
   font-size: 0.82rem;
 }
 
+/* Un-missable reveal/reclaim banner — deliberately louder than the rest of
+   the panel (border + tinted background, not just text) since the whole
+   point is a user can't scroll past it without noticing. */
+.alert {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  border: 1px solid transparent;
+}
+.alert[data-tone="amber"] {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+}
+.alert[data-tone="red"] {
+  background: var(--red-dim);
+  border-color: var(--red);
+}
+.alertHead {
+  font-weight: 650;
+  font-size: 0.88rem;
+}
+.alert[data-tone="amber"] .alertHead {
+  color: var(--amber);
+}
+.alert[data-tone="red"] .alertHead {
+  color: var(--red);
+}
+.alertBody {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.alertBody code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.alertActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .txRow {
   margin: 0;
   font-size: 0.78rem;

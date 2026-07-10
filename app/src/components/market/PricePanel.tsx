@@ -7,11 +7,14 @@
 // truthful empty state (with the single real clearing-price point when it
 // exists) instead of a fabricated curve.
 
+import { useMemo } from "react";
 import {
   type OnChainMarket,
   PHASE_MATCHED,
+  PHASE_NONE,
   priceToPercent,
 } from "@/lib/onchain";
+import { useSealedOrders } from "@/lib/hooks";
 import { fmtUsdc } from "./format";
 import styles from "./PricePanel.module.css";
 
@@ -29,6 +32,21 @@ export function PricePanel({ market }: { market: OnChainMarket }) {
   const total = market.totalSideA + market.totalSideB;
   const hasPool = total > 0n;
   const sideAPct = hasPool ? (Number(market.totalSideA) / Number(total)) * 100 : null;
+
+  // "Volume" above is Market.total_side_a/b — written ONLY by run_batch_match,
+  // from matched size (run_batch_match.rs:195-200). Real collateral that's
+  // been committed (and for revealed orders, escrowed against a known side)
+  // but hasn't cleared a batch yet is invisible in that figure — a market
+  // can have real locked tUSDC and still read "Volume: 0", which is honest
+  // but incomplete. Surface it separately, never folded into Volume itself.
+  const isSealed = market.phase !== PHASE_NONE;
+  const ordersQuery = useSealedOrders(isSealed ? market.pda : "");
+  const lockedCollateral = useMemo(() => {
+    const orders = ordersQuery.data ?? [];
+    return orders
+      .filter((o) => o.status === 0 || o.status === 1) // Locked or Revealed — not yet Matched/Refunded
+      .reduce((sum, o) => sum + o.collateralLocked, 0n);
+  }, [ordersQuery.data]);
 
   // phase stays Matched even after settle/claim, so a settled market still
   // shows the real clearing price its batch produced.
@@ -48,7 +66,9 @@ export function PricePanel({ market }: { market: OnChainMarket }) {
         </div>
         <dl className={styles.stats}>
           <div>
-            <dt>Volume</dt>
+            <dt title="Matched volume only — the sum of collateral that has actually cleared a batch (run_batch_match), not raw commitments.">
+              Volume
+            </dt>
             <dd className="live-value">{fmtUsdc(total)} tUSDC</dd>
           </div>
           <div>
@@ -59,6 +79,14 @@ export function PricePanel({ market }: { market: OnChainMarket }) {
             <dt>Side B pool</dt>
             <dd className="live-value">{fmtUsdc(market.totalSideB)} tUSDC</dd>
           </div>
+          {isSealed && lockedCollateral > 0n && (
+            <div>
+              <dt title="Real, on-chain escrowed collateral behind orders that are committed and/or revealed but haven't cleared a batch yet — not counted in Volume above until they match.">
+                Locked (pending match)
+              </dt>
+              <dd className="live-value">{fmtUsdc(lockedCollateral)} tUSDC</dd>
+            </div>
+          )}
           {cleared && (
             <div>
               <dt>Clearing price</dt>

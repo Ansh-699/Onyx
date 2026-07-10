@@ -20,7 +20,15 @@ export interface FixtureInfo {
   participant2: string;
 }
 
-// [VERIFIED live 2026-07-09 via TxLINE /fixtures/snapshot, World Cup free tier bundle]
+// [VERIFIED live 2026-07-09, re-verified live 2026-07-10 via TxLINE
+//  /fixtures/snapshot — bundle window unchanged (6 fixtures, same set minus
+//  18209181 which has since kicked off and rolled out of the window; kept
+//  below since real team names don't stop being true just because the
+//  endpoint stopped listing the fixture as "current"). Also checked: no
+//  participant-ID -> name lookup endpoint exists anywhere in TxLINE's
+//  documented surface, so fixture 18179550 (Participant1Id/Participant2Id
+//  1575/1289 per /scores/snapshot) has no path to a real name right now —
+//  not unresolved from lack of trying.]
 const KNOWN_FIXTURES: Record<number, FixtureInfo> = {
   18209181: { competition: "World Cup", participant1: "France", participant2: "Morocco" },
   18213979: { competition: "World Cup", participant1: "Norway", participant2: "England" },
