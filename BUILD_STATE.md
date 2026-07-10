@@ -940,3 +940,50 @@ onyx/
       combined two-stat market settling true (3+2=5>4), and a non-demo
       fixture settling false (1>100) — confirming the pipeline evaluates
       correctly in both directions, not just "always resolves true."
+
+- [DONE] **AMM pivot Phase 0: design doc + feasibility call + live probe —
+  NO AMM code written** (per explicit direction: design + honest
+  feasibility before any feature code, sealed-batch preserved as the
+  guaranteed fallback). Direction locked by the owner 2026-07-10:
+  Polymarket-style sell-anytime via an outcome-token AMM (curve as
+  counterparty), explicitly NOT an order book, additive as a new market
+  type. Full design in `docs/AMM_TRADING_DESIGN.md`. The load-bearing
+  outputs:
+  - **The one genuinely untested ER assumption was probed live and
+    PASSED** (`app/scripts/probe_amm_concurrency.ts`, existing deployed
+    instructions only): concurrent multi-wallet read-modify-write to ONE
+    shared delegated account — the exact write shape of an AMM swap
+    against pool reserves. 4 fresh wallets fired truly concurrent
+    (`Promise.all`) reveal_order_fast txs (each increments the shared
+    `Market.revealed_count`), then concurrent cancels (each decrements):
+    8/8 landed, counter read exactly 4 then exactly 0 — zero lost
+    updates — at 0.77–1.1s per write. Market
+    `E9QbBguPi7b1msHojb4LBSiCUCYo89pwNXsBT3ZxSKcN`, sigs in the probe
+    output/design doc.
+  - Every other ER-hostile requirement maps onto primitives already
+    proven this build (pure-data swaps, read-only fee payer, join-while-
+    delegated, generic undelegate-many, base payouts, untouched oracle
+    settlement) — cited, not re-probed. Compute headroom bounded
+    analytically from this session's measured CU (1.6k–7.7k for heavier
+    logic vs 200k budget); Phase A will assert swap CU < 50k anyway.
+  - Design decisions: CPMM/FPMM over LMSR (integer-exact + one u128
+    isqrt vs error-prone fixed-point ln/exp; what Gnosis/Polymarket
+    actually shipped); VIRTUAL outcome-token balances rather than real
+    SPL mints in v1 (SPL CPIs are exactly the operation class the ER
+    rejects — the original Phase-0 finding; real mints = roadmap);
+    complete-set accounting with an exact solvency identity
+    (vault == Σ usdc_available + sets_outstanding + fees, rounding always
+    credited to fees) to be asserted in tests and reconciled to the
+    lamport in the devnet proof; single disclosed seed-once LP in v1 (LP
+    can genuinely lose — disclosed, same "no bluff" treatment as the
+    house-counter); AMM pools attach ONLY to phase==PHASE_NONE plain
+    markets (zero interaction with the sealed state machine; Market
+    layout untouched — all AMM state in a new pool PDA).
+  - Feasibility verdict: GO, additive, ~7 instructions + 2 account types
+    (discs 29–36, account discs 6–7), phased A–E with per-phase on-chain
+    proof and two abort gates (end day 2: math not green in mollusk →
+    abort; end day 4: ER swaps failing → base-only AMM or fallback).
+    Risk ranking after the probe: (1) UI days, (2) integer-math edge
+    cases (offline-testable), (3) devnet flakiness — NOT ER capability.
+    Honest trade acknowledged: sealed-batch MEV-resistance does not apply
+    to AMM markets; disclosed in-product rather than glossed.
