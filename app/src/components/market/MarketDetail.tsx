@@ -141,8 +141,11 @@ export function MarketDetail({ pda }: { pda: string }) {
                   <p className={erStyles.classicWarning}>
                     This market is currently delegated to the Ephemeral Rollup for fast trading. The classic flow
                     below only reads/writes base devnet, so it&apos;s seeing a snapshot frozen at delegation time —
-                    avoid placing new classic orders until the market moves back to base (see the fast-trade panel
-                    above).
+                    avoid placing new classic orders until the market moves back to base. If you already have a
+                    classic order here, revealing it may fail while the market is delegated (confirmed live: the
+                    first reveal after commit close tries to advance the market&apos;s phase, which base devnet
+                    rejects while the market is owned by the Ephemeral Rollup) — if that happens, your locked
+                    collateral is still recoverable via a refund once the reveal window closes, not stuck.
                   </p>
                 )}
                 <SealedOrderPanel market={market} />

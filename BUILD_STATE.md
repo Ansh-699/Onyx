@@ -754,3 +754,50 @@ onyx/
   Both test files caught a real authoring mistake in the process (a
   withdraw_trading "wrong owner" test that accidentally passed a matching
   owner on its first assertion) — fixed before either suite was trusted.
+
+- [FOUND, NOT FIXED] **Live-verifying the classic-vs-fast phase-collision
+  hypothesis (both `run_batch_match`/`run_batch_match_fast` share the same
+  `if market.phase() == PHASE_MATCHED { WrongPhase }` guard, so whichever
+  flow matches first permanently blocks the other) surfaced a different,
+  more immediate bug first, before that scenario could even be reached.**
+  Real devnet repro: committed a classic sealed order, then delegated the
+  market for fast trading (both ordinary, permissionless actions, no
+  particular sequence required), then attempted the classic `reveal_order`.
+  It failed with a raw runtime-level `ExternalAccountDataModified` — NOT a
+  program-level `OnyxError` — because `reveal_order.rs`'s "lazy phase
+  transition" (`if market.phase() == PHASE_COMMIT { market.set_phase(PHASE_REVEAL) }`,
+  a genuine WRITE to the market account, on the first reveal call after
+  commit close) hits a market whose base-layer copy is now owned by the
+  Delegation Program, not ONYX — the SVM runtime itself rejects the write
+  before the program's own logic ever runs. **This means: once ANY market
+  gets delegated for fast trading, the classic flow's reveal_order is
+  broken for whichever wallet is first to reveal after commit close** — a
+  raw, confusing error, not a friendly one (`friendlyError`/
+  `classifyWrongLedger` don't have a pattern for
+  `ExternalAccountDataModified` yet).
+  **The good news, also confirmed live, not assumed:** since the order
+  never actually got marked revealed (the failed tx fully reverts — no
+  partial state), it stays genuinely `status=Locked`, `revealed()=false` —
+  exactly what `refund_unrevealed` requires, and unlike `reveal_order`,
+  `refund_unrevealed` never writes to the market account (verified by
+  reading it fully), so it does NOT hit the same runtime rejection. Ran it
+  against the stuck order for real: succeeded, full collateral back. The
+  UI's existing Reclaim button (`SealedOrderPanel.tsx`, gated on
+  `nowSec >= revealEnd`, wired since the P0/P1 pass) already covers this —
+  confirmed, not assumed.
+  **What this means the original hypothesis leaves unresolved:** this repro
+  never reached "classic order successfully revealed, then stuck by the
+  fast flow matching first" — reveal itself failed first. To actually test
+  that scenario needs revealing the classic order BEFORE delegating the
+  market (so the lazy phase-transition write lands while the market is
+  still ONYX-owned), then delegating and letting fast trading match after.
+  Not yet done. Whether a genuinely-revealed, genuinely-stuck order (no
+  `refund_unrevealed` recourse, since that instruction explicitly rejects
+  already-revealed orders) is actually reachable remains **code-verified,
+  not live-reproduced**.
+  Not fixed yet, on purpose — this is fund-custody-adjacent program logic
+  (`reveal_order.rs`) and any fix deserves the same mollusk-svm test rigor
+  as withdraw_trading/run_batch_match_fast above before shipping, not a
+  rushed patch. The classic-flow disclosure's UI warning
+  (`MarketDetail.tsx`) was updated to mention this specific failure mode and
+  reassure that funds aren't stuck in this exact case, pending a real fix.
