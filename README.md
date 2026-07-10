@@ -133,15 +133,15 @@ flowchart TB
     TxOracle2["txoracle (TxODDS)\nvalidate_stat — same program as the classic flow"]
 
     App2 -->|ask which ledger holds this account| Router
-    App2 -->|delegate_market, open+deposit+delegate_trading_account\n(base, real SPL transfer in)| MarketB
+    App2 -->|"delegate_market, open+deposit+delegate_trading_account\n(base, real SPL transfer in)"| MarketB
     App2 -->|deposit| TradingB
     MarketB -.->|delegate| MarketER
     TradingB -.->|delegate| TradingER
-    App2 -->|submit/reveal/cancel/run_batch_match_fast\n(routed to whichever ledger is authoritative)| TradingER
+    App2 -->|"submit/reveal/cancel/run_batch_match_fast\n(routed to whichever ledger is authoritative)"| TradingER
     HouseFast -->|counter TradingAccount| TradingER
-    TradingER -.->|undelegate, market + every TradingAccount\nin ONE call| TradingB
+    TradingER -.->|"undelegate, market + every TradingAccount\nin ONE call"| TradingB
     MarketER -.->|undelegate| MarketB
-    MarketB -->|settle_market CPI\n(same oracle path as the classic flow)| TxOracle2
+    MarketB -->|"settle_market CPI\n(same oracle path as the classic flow)"| TxOracle2
     App2 -->|withdraw_trading, base only| VaultB
 ```
 
