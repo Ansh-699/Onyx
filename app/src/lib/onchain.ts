@@ -10,6 +10,11 @@
 import { Buffer } from "buffer";
 import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
 
+// MagicBlock Delegation Program — owns delegated accounts while on the ER.
+// Declared here (not imported from instructions.ts) to avoid a cycle:
+// instructions.ts imports ONYX_PROGRAM_ID from this file.
+const DELEGATION_PROGRAM_ID_PK = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
+
 export const ONYX_PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_ONYX_PROGRAM_ID ?? "4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB",
 );
@@ -202,12 +207,33 @@ export function priceToPercent(price: bigint): string {
 /** All ONYX Market accounts currently on devnet, newest (by created_slot) first. */
 export async function listMarkets(): Promise<OnChainMarket[]> {
   const connection = getConnection();
-  const accounts = await connection.getProgramAccounts(ONYX_PROGRAM_ID, {
-    filters: [{ memcmp: { offset: 0, bytes: Buffer.from([DISC_MARKET]).toString("base64"), encoding: "base64" } }],
-  });
-  const markets = accounts
+  // Two scans: ONYX-owned markets, plus markets currently DELEGATED to the
+  // MagicBlock ER (owned by the Delegation Program on base — an owner-
+  // filtered scan of ONYX alone would silently drop every delegated market,
+  // which is exactly the state the v2 seeder leaves them in). The
+  // delegation-program scan can match foreign accounts (any program's
+  // delegated data with byte 0 == 2), so each hit is verified by
+  // re-deriving the market PDA from its own stored fixtureId + paramsHash —
+  // an exact, unforgeable check.
+  const disc = { memcmp: { offset: 0, bytes: Buffer.from([DISC_MARKET]).toString("base64"), encoding: "base64" } } as const;
+  const [own, delegated] = await Promise.all([
+    connection.getProgramAccounts(ONYX_PROGRAM_ID, { filters: [disc] }),
+    connection.getProgramAccounts(DELEGATION_PROGRAM_ID_PK, { filters: [disc] }).catch(() => []),
+  ]);
+  const markets = own
     .map(({ pubkey, account }) => decodeMarket(pubkey, account.data))
     .filter((m): m is OnChainMarket => m !== null);
+  for (const { pubkey, account } of delegated) {
+    const m = decodeMarket(pubkey, account.data);
+    if (!m) continue;
+    const fixtureLe = Buffer.alloc(8);
+    fixtureLe.writeBigUInt64LE(m.fixtureId);
+    const [expected] = PublicKey.findProgramAddressSync(
+      [Buffer.from("market"), fixtureLe, Buffer.from(m.paramsHash, "hex")],
+      ONYX_PROGRAM_ID,
+    );
+    if (expected.equals(pubkey)) markets.push(m);
+  }
   markets.sort((a, b) => (b.createdSlot > a.createdSlot ? 1 : -1));
   return markets;
 }
