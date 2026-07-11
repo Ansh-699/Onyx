@@ -44,7 +44,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> Pr
     // Config guard.
     {
         let mut cdata = config_ai.try_borrow_mut_data()?;
-        let config = Config::load(&mut cdata)?;
+        let config = Config::load_checked(&mut cdata, config_ai.key(), program_id)?;
         if config.paused() {
             return Err(OnyxError::Paused.into());
         }

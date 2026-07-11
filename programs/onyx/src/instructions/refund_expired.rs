@@ -32,6 +32,9 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> P
     if !caller.is_signer() {
         return Err(OnyxError::MissingSignature.into());
     }
+    if !position_ai.is_owned_by(program_id) {
+        return Err(OnyxError::InvalidOwner.into());
+    }
 
     // Market must be past deadline+grace and NOT settled/claimed.
     let (deadline, status, market_key, vault_bump) = {

@@ -44,7 +44,7 @@ pub(crate) fn create_market_and_vault(
     // Config guard: not paused.
     {
         let mut cdata = config_ai.try_borrow_mut_data()?;
-        let config = Config::load(&mut cdata)?;
+        let config = Config::load_checked(&mut cdata, config_ai.key(), program_id)?;
         if config.paused() {
             return Err(OnyxError::Paused.into());
         }

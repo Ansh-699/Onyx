@@ -18,13 +18,16 @@ use crate::error::OnyxError;
 use crate::state::market::Market;
 use crate::state::sealed_order::SealedOrder;
 
-pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> ProgramResult {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> ProgramResult {
     let [payer, market_ai, order_ai, vault_ai, owner_ata, _token_program, ..] = accounts else {
         return Err(OnyxError::InvalidInstructionData.into());
     };
 
     if !payer.is_signer() {
         return Err(OnyxError::MissingSignature.into());
+    }
+    if !order_ai.is_owned_by(program_id) {
+        return Err(OnyxError::InvalidOwner.into());
     }
 
     let (market_key, vault_bump) = {
@@ -57,6 +60,14 @@ pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> 
         let owner_tok = TokenAccount::from_account_info(owner_ata).map_err(|_| OnyxError::InvalidAccountSize)?;
         if owner_tok.owner() != &owner {
             return Err(OnyxError::Unauthorized.into());
+        }
+    }
+
+    // I-Solvency guard (matches refund_expired.rs / claim.rs).
+    {
+        let vault = TokenAccount::from_account_info(vault_ai).map_err(|_| OnyxError::InvalidAccountSize)?;
+        if vault.amount() < collateral_locked {
+            return Err(OnyxError::VaultUnderfunded.into());
         }
     }
 

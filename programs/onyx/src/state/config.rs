@@ -14,9 +14,9 @@
 //! 108    20  _reserved
 //! ```
 
-use crate::constants::DISC_CONFIG;
+use crate::constants::{DISC_CONFIG, SEED_CONFIG};
 use crate::error::OnyxError;
-use pinocchio::pubkey::Pubkey;
+use pinocchio::pubkey::{find_program_address, Pubkey};
 
 pub const CONFIG_LEN: usize = 128;
 
@@ -49,6 +49,22 @@ impl<'a> Config<'a> {
             return Err(OnyxError::WrongStatus);
         }
         Ok(c)
+    }
+
+    /// `load`, plus a check that `account_key` is the canonical singleton
+    /// Config PDA -- callers MUST use this (not bare `load`) whenever
+    /// `config_ai` is a caller-supplied account, since `load` alone only
+    /// checks the discriminator byte and a forged account could satisfy it.
+    pub fn load_checked(
+        data: &'a mut [u8],
+        account_key: &Pubkey,
+        program_id: &Pubkey,
+    ) -> Result<Self, OnyxError> {
+        let (config_pda, _) = find_program_address(&[SEED_CONFIG], program_id);
+        if account_key != &config_pda {
+            return Err(OnyxError::InvalidPda);
+        }
+        Self::load(data)
     }
 
     #[inline]

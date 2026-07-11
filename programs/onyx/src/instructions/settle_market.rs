@@ -22,7 +22,7 @@ use crate::error::OnyxError;
 use crate::state::config::Config;
 use crate::state::market::Market;
 
-pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> ProgramResult {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> ProgramResult {
     let [submitter, config_ai, market_ai, txoracle_ai, roots_ai, ..] = accounts else {
         return Err(OnyxError::InvalidInstructionData.into());
     };
@@ -34,7 +34,7 @@ pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> P
     // Config guard: the passed txoracle program must match the configured one.
     {
         let mut cdata = config_ai.try_borrow_mut_data()?;
-        let config = Config::load(&mut cdata)?;
+        let config = Config::load_checked(&mut cdata, config_ai.key(), program_id)?;
         if &config.txoracle_program() != txoracle_ai.key() {
             return Err(OnyxError::Unauthorized.into());
         }

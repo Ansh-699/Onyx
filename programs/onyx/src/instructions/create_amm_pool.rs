@@ -50,6 +50,9 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> Pr
     if seed_amount == 0 {
         return Err(OnyxError::InsufficientStake.into());
     }
+    if fee_bps as u64 > BPS_DENOM {
+        return Err(OnyxError::BadParams.into());
+    }
 
     let market_key = *market_ai.key();
     {

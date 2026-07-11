@@ -52,7 +52,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> P
 
     let fee_bps = {
         let mut cdata = config_ai.try_borrow_mut_data()?;
-        let config = Config::load(&mut cdata)?;
+        let config = Config::load_checked(&mut cdata, config_ai.key(), program_id)?;
         config.fee_bps() as u64
     };
 
@@ -248,7 +248,7 @@ mod tests {
         mollusk_svm_programs_token::token::add_program(&mut mollusk);
 
         let owner = Pubkey::new_unique();
-        let config_key = Pubkey::new_unique();
+        let (config_key, _) = Pubkey::find_program_address(&[b"config"], &PROGRAM_ID);
         let market_key = Pubkey::new_unique();
         let trading_key = Pubkey::new_unique();
         let mint = Pubkey::new_unique();

@@ -12,7 +12,7 @@
 use pinocchio::{
     account_info::AccountInfo,
     instruction::{Seed, Signer},
-    pubkey::{find_program_address, Pubkey},
+    pubkey::Pubkey,
     ProgramResult,
 };
 use pinocchio_token::instructions::Transfer;
@@ -34,10 +34,13 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> P
     if !winner.is_signer() {
         return Err(OnyxError::MissingSignature.into());
     }
+    if !position_ai.is_owned_by(program_id) {
+        return Err(OnyxError::InvalidOwner.into());
+    }
 
     let fee_bps = {
         let mut cdata = config_ai.try_borrow_mut_data()?;
-        let config = Config::load(&mut cdata)?;
+        let config = Config::load_checked(&mut cdata, config_ai.key(), program_id)?;
         config.fee_bps() as u64
     };
 
