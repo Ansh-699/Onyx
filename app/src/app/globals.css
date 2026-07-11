@@ -61,6 +61,13 @@
   --glass-border: rgba(255, 255, 255, 0.14);
   --glass-highlight: rgba(255, 255, 255, 0.35);
   --glass-shadow: rgba(0, 0, 0, 0.45);
+
+  /* ambient body-wash strength (body background gradients) — light mode
+     needs much stronger washes: its deep accent at low alpha vanishes on
+     white, while dark mode's bright accent reads at ~12%. */
+  --wash-1: 12%;
+  --wash-2: 9%;
+  --wash-3: 7%;
 }
 
 /* Light mode — re-tuned, not inverted: accent goes deeper/more saturated for
@@ -96,6 +103,9 @@
   --glass-border: rgba(15, 23, 42, 0.08);
   --glass-highlight: rgba(255, 255, 255, 0.9);
   --glass-shadow: rgba(15, 23, 42, 0.12);
+  --wash-1: 26%;
+  --wash-2: 18%;
+  --wash-3: 13%;
 }
 
 /* System-preference fallback for a first-time visitor who hasn't toggled
@@ -165,9 +175,9 @@ body {
      the blur/tint actually act on. Deliberately faint (≤12% accent, no
      hard-edged blob), fixed so glass panels slide over it on scroll. */
   background:
-    radial-gradient(640px 420px at 12% 8%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%),
-    radial-gradient(760px 520px at 88% 26%, color-mix(in srgb, var(--accent-strong) 9%, transparent), transparent 70%),
-    radial-gradient(700px 480px at 40% 90%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    radial-gradient(640px 420px at 12% 8%, color-mix(in srgb, var(--accent) var(--wash-1), transparent), transparent 70%),
+    radial-gradient(760px 520px at 88% 26%, color-mix(in srgb, var(--accent-strong) var(--wash-2), transparent), transparent 70%),
+    radial-gradient(700px 480px at 40% 90%, color-mix(in srgb, var(--accent) var(--wash-3), transparent), transparent 70%),
     var(--bg);
   background-attachment: fixed;
 }
