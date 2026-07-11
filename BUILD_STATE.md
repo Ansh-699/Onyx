@@ -1088,3 +1088,53 @@ onyx/
   positions, genuinely concurrent real swaps under Promise.all with the
   3-assertion audit incl. the landing-order replay, undelegate, settle,
   post-settlement reconciliation) — pending report-back.
+
+## 2026-07-11 — AMM Phase C COMPLETE: concurrent REAL swaps on the ER, replay-audited, solvent end-to-end
+
+Two full live runs (markets `4Pi3qdV7z5mXEZQ4XLkxqi8f8bsBCSsScd3ZWYK6UhXb`,
+`uiUoQP7Pk4KupNcaZxDeUAdx1HtmcwYuEF9ryB7ondH`), both PASS. The second run
+used the strengthened inline audit; the first run's audit was verified
+offline with identical method. `app/scripts/amm_er_lifecycle.ts` is the
+permanent artifact.
+
+- **First live use of discs 32/33** (`delegate_amm_pool`,
+  `delegate_amm_position`): both worked first try; market+pool+4 positions
+  all co-located on one ER node (router-verified) —
+  `https://devnet-as.magicblock.app/`.
+- **2 rounds × 4 genuinely concurrent real swaps** (Promise.all): round 1
+  all-buys, round 2 two sells + two buys. All 8 landed Finalized-on-ER
+  (sample sig confirmed not-found-on-base, the standing evidence bar).
+  Batch wall-clock 1.0–1.6s for 4 concurrent swaps; the ER batched 3–4 of
+  them into the SAME slot both rounds — maximal write contention on the
+  shared pool, which is exactly the case under test.
+- **The replay audit (the tightening from the pivot approval): PASS with
+  UNIQUENESS.** For each round, every serialization consistent with the
+  slot partial-order was enumerated and simulated through the mirrored
+  CPMM math; consistency required reproducing the final pool state AND
+  every wallet's individual position delta. Result both rounds, both runs:
+  **exactly 1 of 6 (or 1/24 in run 1's all-same-slot round) candidate
+  orders reproduces the on-chain end state** — the landing order is
+  uniquely determined, all 4 swaps' effects composed sequentially, no lost
+  update, no swap priced off stale reserves. Live bonus finding: run 1
+  round 1 contained a DECOY permutation matching pool-state-only that the
+  per-wallet-delta check eliminated — the position deltas are load-bearing
+  discriminators, now baked into the script. Genuine reordering observed
+  (submission order ≠ landing order in both runs), so the audit exercised
+  a real case, not a trivial FIFO.
+- **Solvency**: exact (2,600,000 invariant) on ER-read state after each
+  concurrent round; **delegation round-trip integrity** — all 16 pool+
+  position fields identical base-vs-ER after undelegate-many (market+pool+
+  4 positions in ONE call); vault untouched throughout; post-settlement
+  (LIVE TxLINE proof again) **vault drained to exactly 0**, Σ payouts ==
+  2,600,000, every wallet's payout individually matched prediction.
+- LP P&L: run 1 **+4,071** (fees beat adverse selection), run 2 **−32,162**
+  (adverse selection won) — both directions of disclosed LP risk observed
+  live.
+- **Sealed-flow regression re-run at this gate**: verify-flow full
+  lifecycle green again (payout +1,990,000 exact), market
+  `6XcxgVmFWjJ7FpHGFe23sgp3378ShNaNLEP4PDS9iBy1`.
+- Gate 2 (design doc): **PASS — ER swaps are real, concurrent, correctly
+  serialized, and solvent.** Next: Phase D (UI: /create market-type
+  toggle, AmmTradingPanel with live-reserve quote engine + user slippage
+  tolerance wired to on-chain min_out, positions, redeem, disclosures) —
+  pending report-back.
