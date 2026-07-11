@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { useRoutedMarket } from "@/lib/hooks";
+import { useRoutedMarket, useAmmPoolExists, useRoutedAmmPool } from "@/lib/hooks";
 import {
   STATUS_NAMES,
   OUTCOME_NAMES,
@@ -33,6 +33,7 @@ import { SettleClaimPanel } from "@/components/SettleClaimPanel";
 import { PhaseTimeline } from "./PhaseTimeline";
 import { PricePanel } from "./PricePanel";
 import { ErTradingPanel } from "./ErTradingPanel";
+import { AmmTradingPanel } from "./AmmTradingPanel";
 import { shortAddr } from "./format";
 import styles from "./MarketDetail.module.css";
 import erStyles from "./ErTradingPanel.module.css";
@@ -50,6 +51,12 @@ const STATUS_TONES: Record<number, string> = {
 export function MarketDetail({ pda }: { pda: string }) {
   const query = useRoutedMarket(pda);
   const market = query.data;
+  // AMM routing: a market with an AMM pool renders the continuous-trading
+  // panel instead of the sealed flow. Pool existence is a delegation-
+  // agnostic base PDA probe; the pool's live state (reserves for the price
+  // header) is separately routed to whichever ledger holds it right now.
+  const poolExists = useAmmPoolExists(pda);
+  const routedPool = useRoutedAmmPool(pda);
 
   // The account genuinely doesn't exist on devnet.
   if (query.isSuccess && market === null) notFound();
@@ -61,6 +68,7 @@ export function MarketDetail({ pda }: { pda: string }) {
   const rawPredicate = rawPredicateText(market);
   const startTimeMs = getFixtureStartTimeMs(Number(market.fixtureId));
   const sealed = market.phase !== PHASE_NONE;
+  const amm = market.phase === PHASE_NONE && (poolExists.data ?? false);
 
   return (
     <div className={styles.page}>
@@ -127,10 +135,20 @@ export function MarketDetail({ pda }: { pda: string }) {
         </section>
       )}
 
-      <div className={styles.cols} data-sealed={sealed}>
+      <div className={styles.cols} data-sealed={sealed || amm}>
         <div className={styles.areaPrice}>
           <PricePanel market={market} connection={query.connection} />
         </div>
+        {amm && routedPool.data && (
+          <div className={styles.areaTrade}>
+            <AmmTradingPanel
+              market={market}
+              pool={routedPool.data}
+              isDelegated={routedPool.isDelegated}
+              connection={routedPool.connection}
+            />
+          </div>
+        )}
         {sealed && (
           <div className={styles.areaTrade}>
             <ErTradingPanel market={market} isDelegated={query.isDelegated} fqdn={query.fqdn} connection={query.connection} />

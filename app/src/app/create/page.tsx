@@ -12,6 +12,8 @@ import { listUpcomingRealFixtures } from "@/lib/fixtureMeta";
 import { friendlyError } from "@/lib/errors";
 import {
   buildOpenMarketSealedIx,
+  buildOpenMarketIx,
+  buildCreateAmmPoolIx,
   computeParamsHash,
   CMP_GREATER_THAN,
   CMP_LESS_THAN,
@@ -61,6 +63,7 @@ export default function CreatePage() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connected } = useWallet();
 
+  const [marketType, setMarketType] = useState<"sealed" | "amm">("sealed");
   const [fixtureId, setFixtureId] = useState<number>(DEMO_FIXTURE.fixtureId);
   const [statKey, setStatKey] = useState<number>(DEMO_FIXTURE.statKey);
   const [combined, setCombined] = useState(false);
@@ -69,6 +72,10 @@ export default function CreatePage() {
   const [threshold, setThreshold] = useState<string>(String(DEMO_FIXTURE.defaultThreshold));
   const [commitMinutes, setCommitMinutes] = useState<string>("3");
   const [revealMinutes, setRevealMinutes] = useState<string>("3");
+  // AMM-only: your real tUSDC seeds the pool at 50/50; you are the LP.
+  const [seedUsdc, setSeedUsdc] = useState<string>("2");
+  const [feePct, setFeePct] = useState<string>("1.0");
+  const [tradingHours, setTradingHours] = useState<string>("24");
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +114,12 @@ export default function CreatePage() {
       const nowSec = BigInt(Math.floor(Date.now() / 1000));
       const commitEndTs = nowSec + BigInt(Math.max(1, Number(commitMinutes))) * 60n;
       const revealEndTs = commitEndTs + BigInt(Math.max(1, Number(revealMinutes))) * 60n;
-      const deadline = revealEndTs + 900n; // 15 min of live-betting room after matching, before deadline
+      // Sealed: deadline follows the reveal window. AMM: continuous trading
+      // until the creator-chosen close — no windows at all.
+      const deadline =
+        marketType === "sealed"
+          ? revealEndTs + 900n
+          : nowSec + BigInt(Math.max(1, Math.round(Number(tradingHours || "24") * 3600)));
 
       const terms = {
         fixtureId: BigInt(fixtureId),
@@ -120,18 +132,43 @@ export default function CreatePage() {
       };
       const paramsHash = computeParamsHash(terms);
 
-      const { ix, market } = buildOpenMarketSealedIx({
-        creator: publicKey,
-        usdcMint,
-        terms,
-        paramsHash,
-        commitEndTs,
-        revealEndTs,
-      });
+      const tx = new Transaction();
+      let market;
+      if (marketType === "sealed") {
+        const built = buildOpenMarketSealedIx({
+          creator: publicKey,
+          usdcMint,
+          terms,
+          paramsHash,
+          commitEndTs,
+          revealEndTs,
+        });
+        market = built.market;
+        tx.add(built.ix);
+      } else {
+        // AMM: the creator seeds the pool with REAL tUSDC from their own
+        // ATA (they become the LP, capital genuinely at risk). Fetch from
+        // the devnet faucet first so a fresh wallet can seed.
+        const seedAmount = BigInt(Math.round(Number(seedUsdc || "0") * 1_000_000));
+        if (seedAmount <= 0n) throw new Error("seed amount must be > 0");
+        const feeBps = Math.round(Number(feePct || "0") * 100);
+        if (feeBps < 0 || feeBps > 1000) throw new Error("fee must be between 0% and 10%");
+
+        const faucetRes = await fetch("/api/faucet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: publicKey.toBase58() }),
+        });
+        const faucetBody = await faucetRes.json();
+        if (!faucetRes.ok || !faucetBody.ok) throw new Error(`devnet faucet failed: ${faucetBody.error ?? faucetRes.status}`);
+
+        const opened = buildOpenMarketIx({ creator: publicKey, usdcMint, terms, paramsHash });
+        market = opened.market;
+        const pooled = buildCreateAmmPoolIx({ creator: publicKey, market, usdcMint, seedAmount, feeBps });
+        tx.add(opened.ix, pooled.ix);
+      }
 
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      const tx = new Transaction();
-      tx.add(ix);
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
 
@@ -150,11 +187,24 @@ export default function CreatePage() {
     <>
       <h1>Create market</h1>
       <p className="muted">
-        Define a predicate over a fixture stat and open a{" "}
-        <strong>sealed-order market</strong>: bets are hidden (commitment hash
-        only) until the commit window closes, then revealed and matched at a
-        single uniform price with no time-priority advantage. This submits a
-        real <code>open_market_sealed</code> transaction to devnet.
+        {marketType === "sealed" ? (
+          <>
+            Define a predicate over a fixture stat and open a{" "}
+            <strong>sealed-order market</strong>: bets are hidden (commitment hash
+            only) until the commit window closes, then revealed and matched at a
+            single uniform price with no time-priority advantage. This submits a
+            real <code>open_market_sealed</code> transaction to devnet.
+          </>
+        ) : (
+          <>
+            Define a predicate over a fixture stat and open an{" "}
+            <strong>AMM market</strong>: continuous Polymarket-style trading — the
+            pool is the counterparty, so anyone can buy <em>and sell</em> outcome
+            tokens at any moment before the close. You seed the pool with your own
+            real test-USDC and become its LP. This submits <code>open_market</code>{" "}
+            + <code>create_amm_pool</code> in one devnet transaction.
+          </>
+        )}
       </p>
 
       {!connected && (
@@ -167,6 +217,14 @@ export default function CreatePage() {
       )}
 
       <form className={styles.form} onSubmit={onSubmit}>
+        <label className={styles.field}>
+          <span>Market type</span>
+          <select value={marketType} onChange={(e) => setMarketType(e.target.value as "sealed" | "amm")} data-testid="create-market-type">
+            <option value="sealed">Sealed batch — MEV-proof commit/reveal, uniform clearing price</option>
+            <option value="amm">AMM — continuous trading, sell anytime, real seeded liquidity</option>
+          </select>
+        </label>
+
         <label className={styles.field}>
           <span>Fixture</span>
           <select
@@ -237,16 +295,33 @@ export default function CreatePage() {
           </label>
         </div>
 
-        <div className={styles.row}>
-          <label className={styles.field}>
-            <span>Commit window (minutes)</span>
-            <input type="number" min={1} value={commitMinutes} onChange={(e) => setCommitMinutes(e.target.value)} />
-          </label>
-          <label className={styles.field}>
-            <span>Reveal window (minutes)</span>
-            <input type="number" min={1} value={revealMinutes} onChange={(e) => setRevealMinutes(e.target.value)} />
-          </label>
-        </div>
+        {marketType === "sealed" ? (
+          <div className={styles.row}>
+            <label className={styles.field}>
+              <span>Commit window (minutes)</span>
+              <input type="number" min={1} value={commitMinutes} onChange={(e) => setCommitMinutes(e.target.value)} />
+            </label>
+            <label className={styles.field}>
+              <span>Reveal window (minutes)</span>
+              <input type="number" min={1} value={revealMinutes} onChange={(e) => setRevealMinutes(e.target.value)} />
+            </label>
+          </div>
+        ) : (
+          <div className={styles.row}>
+            <label className={styles.field}>
+              <span>Pool seed (test-USDC — your capital, you are the LP)</span>
+              <input type="number" min={0.1} step="0.1" value={seedUsdc} onChange={(e) => setSeedUsdc(e.target.value)} data-testid="create-seed" />
+            </label>
+            <label className={styles.field}>
+              <span>Swap fee (%) — accrues to you</span>
+              <input type="number" min={0} max={10} step="0.1" value={feePct} onChange={(e) => setFeePct(e.target.value)} />
+            </label>
+            <label className={styles.field}>
+              <span>Trading open for (hours)</span>
+              <input type="number" min={1} value={tradingHours} onChange={(e) => setTradingHours(e.target.value)} />
+            </label>
+          </div>
+        )}
 
         <div className={styles.preview}>
           Settles YES iff{" "}
@@ -254,8 +329,21 @@ export default function CreatePage() {
             {isCombined ? `${combineOp === "add" ? "total" : "difference in"} ${statLabel.replace(/^P\d /, "")} (${statLabel} ${combineOp === "add" ? "+" : "−"} ${pairLabel})` : statLabel}{" "}
             {comparisonSymbol(op)} {threshold || "?"}
           </strong>
-          . Orders are sealed for {commitMinutes || "?"} min, then revealed
-          for {revealMinutes || "?"} min before the batch match runs.
+          .{" "}
+          {marketType === "sealed" ? (
+            <>
+              Orders are sealed for {commitMinutes || "?"} min, then revealed for {revealMinutes || "?"} min before
+              the batch match runs.
+            </>
+          ) : (
+            <>
+              Pool opens at 50/50 with your {seedUsdc || "?"} tUSDC seed ({feePct || "?"}% fee per swap to you);
+              anyone can buy and sell continuously for {tradingHours || "?"}h.{" "}
+              <strong>LP risk is real:</strong> if traders load the side that wins, the reserve you withdraw after
+              settlement can be worth less than your seed. AMM markets are not MEV-proof (that&apos;s what sealed
+              markets are for).
+            </>
+          )}
           {isDemoFixture ? (
             <>
               {" "}
@@ -273,8 +361,8 @@ export default function CreatePage() {
           )}
         </div>
 
-        <button className="button" type="submit" disabled={!connected || phase === "submitting"}>
-          {phase === "submitting" ? "Submitting…" : "Create market"}
+        <button className="button" type="submit" disabled={!connected || phase === "submitting"} data-testid="create-submit">
+          {phase === "submitting" ? "Submitting…" : marketType === "sealed" ? "Create sealed market" : "Create AMM market & seed pool"}
         </button>
       </form>
 

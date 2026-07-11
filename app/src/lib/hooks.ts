@@ -14,9 +14,17 @@ import {
   getConnection,
   getTradingAccount,
   listTradingAccountsForMarket,
+  ammPoolPda,
+  ammPoolExists,
+  getAmmPool,
+  getAmmPosition,
+  listAmmPoolMarkets,
+  listAmmPositionsForOwner,
   type OnChainMarket,
   type OnChainSealedOrder,
   type OnChainTradingAccount,
+  type OnChainAmmPool,
+  type OnChainAmmPosition,
 } from "./onchain";
 import { getDelegationStatus, getErConnection, type DelegationStatus } from "./erRouting";
 
@@ -127,6 +135,94 @@ export function useTradingAccountsForMarket(marketPda: string, connection: Retur
     refetchInterval: 2_000,
     placeholderData: keepPreviousData,
     enabled: !!marketPk,
+  });
+}
+
+// =====================================================================
+// AMM trading hooks (docs/AMM_TRADING_DESIGN.md Phase D). Same routing
+// discipline as the TradingAccount hooks: the pool/position live on the ER
+// while delegated, so reads resolve the POOL's own delegation status (not
+// the market's — they're delegated together in the happy path, but the
+// pool's status is what governs where swap state actually is).
+// =====================================================================
+
+/** Does this market have an AMM pool at all? Cheap existence probe (base PDA read, delegation-agnostic) — MarketDetail routes panels on this. ~10s poll. */
+export function useAmmPoolExists(marketPda: string) {
+  const marketPk = useMemo(() => (marketPda ? new PublicKey(marketPda) : null), [marketPda]);
+  return useQuery({
+    queryKey: ["ammPoolExists", marketPda],
+    queryFn: () => ammPoolExists(marketPk!),
+    refetchInterval: 10_000,
+    placeholderData: keepPreviousData,
+    enabled: !!marketPk,
+  });
+}
+
+/**
+ * A market's AMM pool, read from whichever ledger currently holds it —
+ * live reserves on the ER while delegated (2.5s poll: prices move fast
+ * there, the UI must too), base otherwise.
+ */
+export function useRoutedAmmPool(marketPda: string) {
+  const marketPk = useMemo(() => (marketPda ? new PublicKey(marketPda) : null), [marketPda]);
+  const poolPk = useMemo(() => (marketPk ? ammPoolPda(marketPk) : null), [marketPk]);
+  const delegation = useDelegationStatus(poolPk);
+
+  const connection = useMemo(() => {
+    if (delegation.data?.isDelegated && delegation.data.fqdn) return getErConnection(delegation.data.fqdn);
+    return getConnection();
+  }, [delegation.data?.isDelegated, delegation.data?.fqdn]);
+
+  const poolQuery = useQuery<OnChainAmmPool | null>({
+    queryKey: ["ammPool", marketPda, delegation.data?.isDelegated ?? false, delegation.data?.fqdn ?? null],
+    queryFn: () => getAmmPool(connection, marketPk!),
+    refetchInterval: 2_500,
+    placeholderData: keepPreviousData,
+    enabled: !!marketPk && delegation.isFetched,
+  });
+
+  return {
+    ...poolQuery,
+    isDelegated: delegation.data?.isDelegated ?? false,
+    fqdn: delegation.data?.fqdn ?? null,
+    connection,
+  };
+}
+
+/** One wallet's AmmPosition for a market, read from the pool's currently-resolved connection. */
+export function useAmmPosition(marketPda: string, owner: PublicKey | null, connection: ReturnType<typeof getConnection>) {
+  const marketPk = useMemo(() => (marketPda ? new PublicKey(marketPda) : null), [marketPda]);
+  return useQuery<OnChainAmmPosition | null>({
+    queryKey: ["ammPosition", marketPda, owner?.toBase58(), connection.rpcEndpoint],
+    queryFn: () => getAmmPosition(connection, marketPk!, owner!),
+    refetchInterval: 2_000,
+    placeholderData: keepPreviousData,
+    enabled: !!marketPk && !!owner,
+  });
+}
+
+/** Market-PDA set with AMM pools — the lobby's "AMM" badge (best-effort: a pool currently delegated to the ER drops out of this base owner-scan). ~30s poll. */
+export function useAmmPoolMarkets() {
+  return useQuery<Set<string>>({
+    queryKey: ["ammPoolMarkets"],
+    queryFn: listAmmPoolMarkets,
+    refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Every AmmPosition a wallet owns. Base owner-scan, so a position currently
+ * delegated to the ER is temporarily absent here (owned by the Delegation
+ * Program while delegated) and reappears after undelegation — the live view
+ * of a delegated position is on its market page, which routes reads to the
+ * ER. Honest limitation, documented in the portfolio section's footer. */
+export function useAmmPositionsForOwner(owner: PublicKey | null) {
+  return useQuery<OnChainAmmPosition[]>({
+    queryKey: ["ammPositions", owner?.toBase58()],
+    queryFn: () => listAmmPositionsForOwner(owner!),
+    refetchInterval: 15_000,
+    placeholderData: keepPreviousData,
+    enabled: !!owner,
   });
 }
 

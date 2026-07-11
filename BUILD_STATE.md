@@ -1138,3 +1138,61 @@ permanent artifact.
   toggle, AmmTradingPanel with live-reserve quote engine + user slippage
   tolerance wired to on-chain min_out, positions, redeem, disclosures) —
   pending report-back.
+
+## 2026-07-11 — AMM Phase D COMPLETE: full trading UI, browser-proven with a real slippage revert on screen
+
+Everything below verified through the REAL UI with the real-signing
+injected wallet (`app/scripts/amm_browser_proof.ts`, permanent), on a
+market CREATED THROUGH /create: `B4XdJKU36ctz9PQsDMyWR2KLCF2iE4f8PH7Fi5c1wHKi`.
+Screenshots amm-01 … amm-12 in the session scratchpad.
+
+- **Lib layer**: `ammMath.ts` (client BigInt mirror of fpmm.rs — the exact
+  math Phase B proved unit-exact on-chain; quotes, spot price, impact,
+  `minOutForTolerance`), 9 new builders in `instructions.ts` (discs 1 +
+  29-36; swap keeps owner READ-ONLY per ER discipline), AmmPool/AmmPosition
+  decoders + existence/scan helpers in `onchain.ts`, routed hooks in
+  `hooks.ts` (`useRoutedAmmPool` resolves the POOL's own delegation via the
+  router, 2.5s poll).
+- **/create**: market-type toggle (Sealed vs AMM). AMM path = faucet →
+  `open_market` + `create_amm_pool` in ONE wallet-signed tx; seed/fee/
+  trading-hours inputs; LP-risk disclosure in the preview. Browser-proven.
+- **AmmTradingPanel**: live prices from reserves, buy/sell with live quote
+  (expected out, fee, impact, **min received == the on-chain min_out arg**),
+  user slippage tolerance, deposit (faucet + open+deposit one sig), redeem
+  (two-leg), LP card (fees accrued + explicit at-risk disclosure), ER
+  accelerate (delegate market+pool+position one sig) / move-to-base,
+  wrong-ledger recovery, latency log, MEV honesty note naming sealed
+  markets as the MEV-proof alternative. MarketDetail routes to it purely on
+  pool existence (delegation-agnostic base PDA probe).
+- **The gate deliverable — deliberate slippage revert IN THE BROWSER**
+  (amm-07-slippage-reverted.png): tolerance 0%, the injected wallet stalls
+  the signature while a script-side trader moves the pool price (the honest
+  real-world race min_out exists for) → the already-built tx lands, fails
+  on-chain Custom(6026), and the panel shows the friendly slippage message.
+  Real sigs for everything: UI create, deposit `2762V36t…`, BUY
+  `5yQ8Z9Ed…` (836ms), SELL `4N1vZM4s…` (968ms — sell-anytime in the
+  browser), settle (real validate_stat), redeem `5n6mdAME…`, LP withdraw
+  `3Sk63KB3…`; after the script-side mover also redeemed, the vault
+  **drained to exactly 0** — the browser lifecycle is solvent to the
+  lamport too.
+- **Two REAL bugs found by the proof, both fixed**:
+  1. **App-wide latent error-shape bug**: web3.js `confirmTransaction`
+     REJECTS with the bare `TransactionError` OBJECT (not an Error) when
+     its websocket signature-notification wins the internal race vs
+     polling. `friendlyError`/`extractProgramErrorCode` stringified it to
+     "[object Object]" — no code extraction, unreadable panel error. Fixed
+     in `errors.ts` (`errText()` JSON-stringifies non-Error throws); this
+     also protects ErTradingPanel, which had the same latent race. Plus:
+     AMM error codes 6026-6031 added to the friendly map.
+  2. **Lobby dedupe hid AMM markets**: same-predicate collapsing folded the
+     new AMM markets behind an old settled SEALED market with an identical
+     predicate. Market KIND (amm/sealed/plain) is now part of the dedupe
+     key. Verified: "AMM · sell anytime" badge renders on /markets.
+- **Portfolio**: "AMM positions" section (deposits, token balances,
+  redeemable state, Go-redeem link; honest footer about ER-delegated
+  positions being temporarily absent from the base scan). Verified rendering
+  a live unredeemed position.
+- **Sealed-flow regression re-run at this gate**: verify-flow full
+  lifecycle green again (exit 0, settle `2c8yZ3S9…`).
+- Next: Phase E (README/docs repositioning + full regression sweep + demo
+  prep) — pending report-back.

@@ -12,11 +12,14 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   type OnChainMarket,
+  type OnChainAmmPosition,
   getMarket,
   getConfigUsdcMint,
+  listAmmPositionsForOwner,
   STATUS_NAMES,
   STATUS_SETTLED,
   STATUS_CLAIMED,
+  OUTCOME_SIDE_A,
   ORDER_STATUS_NAMES,
   TRADING_STATUS_NAMES,
   TRADING_STATUS_LOCKED,
@@ -152,6 +155,26 @@ export default function PortfolioPage() {
   const tradingAccountsQuery = useQuery({
     queryKey: ["myTradingAccounts", owner],
     queryFn: () => listTradingAccountsByOwner(publicKey!),
+    refetchInterval: 15_000,
+    placeholderData: keepPreviousData,
+    enabled: ready,
+  });
+
+  // AMM positions (continuous-trading markets). Base owner-scan: a position
+  // currently delegated to the ER is temporarily absent here (owned by the
+  // Delegation Program) and reappears on undelegation — its live state is on
+  // the market page, which routes reads to the ER. Labeled in the footer.
+  const ammPositionsQuery = useQuery<{ position: OnChainAmmPosition; market: OnChainMarket | null }[]>({
+    queryKey: ["myAmmPositions", owner],
+    queryFn: async () => {
+      const positions = await listAmmPositionsForOwner(publicKey!);
+      const marketPdas = [...new Set(positions.map((p) => p.market))];
+      const fetched = await Promise.all(marketPdas.map((pda) => getMarket(pda)));
+      const byPda = new Map(marketPdas.map((pda, i) => [pda, fetched[i] ?? null]));
+      return positions
+        .filter((p) => p.usdcAvailable > 0n || p.tokensA > 0n || p.tokensB > 0n || !p.redeemed)
+        .map((position) => ({ position, market: byPda.get(position.market) ?? null }));
+    },
     refetchInterval: 15_000,
     placeholderData: keepPreviousData,
     enabled: ready,
@@ -300,6 +323,58 @@ export default function PortfolioPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      {/* ---- AMM positions (continuous trading) ---- */}
+      <section className={styles.section}>
+        <h2>AMM positions (trade-anytime markets)</h2>
+        {ammPositionsQuery.isPending ? (
+          <div className={styles.rows} aria-hidden>
+            <div className={`skeleton ${styles.skelRow}`} />
+          </div>
+        ) : ammPositionsQuery.isError ? (
+          <p className={styles.error}>{friendlyError(ammPositionsQuery.error)}</p>
+        ) : !ammPositionsQuery.data || ammPositionsQuery.data.length === 0 ? (
+          <div className={styles.empty}>
+            No AMM positions yet — <Link href="/markets">browse markets →</Link>. (A position currently delegated
+            to the Ephemeral Rollup shows up on its own market page rather than here until it moves back to base.)
+          </div>
+        ) : (
+          <div className={styles.rows}>
+            {ammPositionsQuery.data.map(({ position: p, market: m }) => {
+              const settled = !!m && (m.status === STATUS_SETTLED || m.status === STATUS_CLAIMED);
+              const winning = settled ? (m!.outcome === OUTCOME_SIDE_A ? p.tokensA : p.tokensB) : 0n;
+              const redeemable = p.usdcAvailable + (settled && !p.redeemed ? winning : 0n);
+              return (
+                <div key={p.pda} className={`card ${styles.row}`}>
+                  <div className={styles.rowMain}>
+                    <div className={styles.question}>
+                      <Link href={`/market/${p.market}`}>
+                        {m ? describeMarketPredicate(m, getFixtureInfo(Number(m.fixtureId)) ?? undefined) : <>Market <span className="mono">{shortPda(p.market)}</span></>}
+                      </Link>
+                    </div>
+                    <div className={styles.sub}>
+                      {p.usdcAvailable > 0n && <span className={styles.amount}>{fmtUsdc(p.usdcAvailable)} tUSDC deposited</span>}
+                      {p.tokensA > 0n && <span>{fmtUsdc(p.tokensA)} Side-A tokens</span>}
+                      {p.tokensB > 0n && <span>{fmtUsdc(p.tokensB)} Side-B tokens</span>}
+                      {p.withdrawn > 0n && <span>withdrawn {fmtUsdc(p.withdrawn)}</span>}
+                    </div>
+                  </div>
+                  <div className={styles.rowMeta}>
+                    <span className="pill" data-tone={settled ? "green" : "accent"}>
+                      {p.redeemed ? "Redeemed" : settled ? "Redeemable" : m ? (STATUS_NAMES[m.status] ?? "Open") : "Open"}
+                    </span>
+                    {!p.redeemed && redeemable > 0n && (
+                      <Link href={`/market/${p.market}`} className="button" data-variant="ghost">
+                        Go redeem →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

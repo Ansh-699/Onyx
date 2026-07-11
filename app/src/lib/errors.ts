@@ -27,6 +27,12 @@ const PROGRAM_ERRORS: Record<number, string> = {
   6023: "Too many orders for one batch match.",
   6024: "You already have a sealed order with this nonce on this market.",
   6025: "You already have a position on the other side of this market — one side per wallet per market.",
+  6026: "Slippage protection triggered: the pool price moved past your tolerance before the swap landed, so it was reverted — nothing was traded. Re-quote and try again (or widen your tolerance).",
+  6027: "The pool doesn't have enough liquidity for that swap.",
+  6028: "AMM pools can only be created on plain markets, not sealed-batch ones.",
+  6029: "The market hasn't settled yet — LP withdrawal opens after settlement.",
+  6030: "This position was already redeemed.",
+  6031: "LP liquidity was already withdrawn from this pool.",
   7000: "An account didn't match its expected derivation (client bug — please report).",
   7001: "Account owner mismatch (client bug — please report).",
   7002: "Malformed instruction data (client bug — please report).",
@@ -36,12 +42,35 @@ const PROGRAM_ERRORS: Record<number, string> = {
   7006: "The oracle CPI failed transiently — retry. This is not a settlement outcome.",
 };
 
+/**
+ * Any error value -> searchable text. Handles the three real shapes: Error
+ * instances (message + optional logs), strings, and PLAIN OBJECTS — the last
+ * one because web3.js's confirmTransaction REJECTS with the bare
+ * TransactionError object (e.g. {"InstructionError":[0,{"Custom":6026}]})
+ * whenever the websocket signature-notification wins its internal race
+ * against the polling path. String(err) on that object is "[object Object]",
+ * which silently defeated the code extraction below — found live by the
+ * Phase D browser proof's deliberate slippage-revert step, where the panel
+ * showed "[object Object]" instead of the 6026 message. JSON.stringify is
+ * the fix, and it applies to every panel (the ER panel had the same latent
+ * race — never observed only because its on-chain failures happened to
+ * surface through the resolved path or at send time).
+ */
+function errText(err: unknown): string {
+  if (err instanceof Error) {
+    return `${err.message}\n${(err as Error & { logs?: string[] }).logs?.join("\n") ?? ""}`;
+  }
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err) ?? String(err);
+  } catch {
+    return String(err);
+  }
+}
+
 /** Pull a Custom(NNNN) program error code out of any web3.js error shape. */
 export function extractProgramErrorCode(err: unknown): number | null {
-  const text =
-    err instanceof Error
-      ? `${err.message}\n${(err as Error & { logs?: string[] }).logs?.join("\n") ?? ""}`
-      : String(err);
+  const text = errText(err);
   const hex = text.match(/custom program error: 0x([0-9a-fA-F]+)/);
   if (hex) return parseInt(hex[1]!, 16);
   const dec = text.match(/"Custom"\s*:\s*(\d+)/);
@@ -51,7 +80,7 @@ export function extractProgramErrorCode(err: unknown): number | null {
 
 /** Best-effort human message for any error thrown by a transaction attempt. */
 export function friendlyError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err);
+  const raw = err instanceof Error ? err.message : errText(err);
 
   const code = extractProgramErrorCode(err);
   if (code !== null && PROGRAM_ERRORS[code]) return PROGRAM_ERRORS[code];
@@ -110,10 +139,7 @@ export function friendlyError(err: unknown): string {
  *     reasonably.
  */
 export function classifyWrongLedger(err: unknown): string | null {
-  const text =
-    err instanceof Error
-      ? `${err.message}\n${(err as Error & { logs?: string[] }).logs?.join("\n") ?? ""}`
-      : String(err);
+  const text = errText(err);
 
   if (
     /InvalidAccountForFee|was modified without being delegated|may not be used to pay transaction fees|InvalidWritableAccount/i.test(

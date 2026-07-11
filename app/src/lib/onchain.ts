@@ -51,6 +51,8 @@ export const OUTCOME_NAMES: Record<number, string> = {
   1: "Side A",
   2: "Side B",
 };
+export const OUTCOME_SIDE_A = 1;
+export const OUTCOME_SIDE_B = 2;
 export const OP_NAMES: Record<number, string> = { 0: "Add", 1: "Subtract", 255: "—" };
 export const CMP_SYMBOLS: Record<number, string> = { 0: ">", 1: "<", 2: "=" };
 
@@ -341,4 +343,148 @@ export async function listTradingAccountsForMarket(
   return accounts
     .map(({ pubkey, account }) => decodeTradingAccount(pubkey, account.data))
     .filter((t): t is OnChainTradingAccount => t !== null);
+}
+
+// =====================================================================
+// AMM outcome-token trading (docs/AMM_TRADING_DESIGN.md; byte layouts
+// mirror programs/onyx/src/state/amm_pool.rs / amm_position.rs exactly).
+// Like TradingAccount reads, every single-account read takes an explicit
+// `connection` — a pool/position lives on the ER while delegated, so the
+// caller resolves base-vs-ER via erRouting first. The list scans are
+// base-only by design: getProgramAccounts on base sees every pool/position
+// ever created (a delegated account still EXISTS on base, owned by the
+// Delegation Program — its base data is stale while delegated but its
+// existence and PDA are what the lobby badge / portfolio discovery need).
+// =====================================================================
+
+export const DISC_AMM_POOL = 6;
+export const DISC_AMM_POSITION = 7;
+export const AMM_POOL_LEN = 176;
+export const AMM_POSITION_LEN = 144;
+
+export interface OnChainAmmPool {
+  pda: string;
+  market: string;
+  lpOwner: string;
+  reserveA: bigint;
+  reserveB: bigint;
+  setsOutstanding: bigint;
+  feesAccrued: bigint;
+  seedAmount: bigint;
+  feeBps: number;
+  lpWithdrawn: boolean;
+}
+
+export function decodeAmmPool(pda: PublicKey, data: Buffer): OnChainAmmPool | null {
+  if (data.length < AMM_POOL_LEN || data[0] !== DISC_AMM_POOL) return null;
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  return {
+    pda: pda.toBase58(),
+    market: new PublicKey(data.subarray(8, 40)).toBase58(),
+    lpOwner: new PublicKey(data.subarray(40, 72)).toBase58(),
+    reserveA: dv.getBigUint64(72, true),
+    reserveB: dv.getBigUint64(80, true),
+    setsOutstanding: dv.getBigUint64(88, true),
+    feesAccrued: dv.getBigUint64(96, true),
+    seedAmount: dv.getBigUint64(104, true),
+    feeBps: dv.getUint16(112, true),
+    lpWithdrawn: data[114] !== 0,
+  };
+}
+
+export interface OnChainAmmPosition {
+  pda: string;
+  owner: string;
+  market: string;
+  usdcAvailable: bigint;
+  tokensA: bigint;
+  tokensB: bigint;
+  withdrawn: bigint;
+  redeemed: boolean;
+}
+
+export function decodeAmmPosition(pda: PublicKey, data: Buffer): OnChainAmmPosition | null {
+  if (data.length < AMM_POSITION_LEN || data[0] !== DISC_AMM_POSITION) return null;
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  return {
+    pda: pda.toBase58(),
+    owner: new PublicKey(data.subarray(8, 40)).toBase58(),
+    market: new PublicKey(data.subarray(40, 72)).toBase58(),
+    usdcAvailable: dv.getBigUint64(72, true),
+    tokensA: dv.getBigUint64(80, true),
+    tokensB: dv.getBigUint64(88, true),
+    withdrawn: dv.getBigUint64(96, true),
+    redeemed: data[104] !== 0,
+  };
+}
+
+export function ammPoolPda(market: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([Buffer.from("amm"), market.toBuffer()], ONYX_PROGRAM_ID)[0];
+}
+export function ammPositionPda(market: PublicKey, owner: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([Buffer.from("ammpos"), market.toBuffer(), owner.toBuffer()], ONYX_PROGRAM_ID)[0];
+}
+
+/** The AMM pool for a market from the given connection (base or ER — caller resolves). Null if the market has no pool there. */
+export async function getAmmPool(connection: Connection, market: PublicKey): Promise<OnChainAmmPool | null> {
+  const pda = ammPoolPda(market);
+  const info = await connection.getAccountInfo(pda);
+  if (!info) return null;
+  return decodeAmmPool(pda, info.data);
+}
+
+/** One wallet's AmmPosition for a market from the given connection. Null if it doesn't exist there. */
+export async function getAmmPosition(connection: Connection, market: PublicKey, owner: PublicKey): Promise<OnChainAmmPosition | null> {
+  const pda = ammPositionPda(market, owner);
+  const info = await connection.getAccountInfo(pda);
+  if (!info) return null;
+  return decodeAmmPosition(pda, info.data);
+}
+
+/**
+ * The set of market PDAs that have an AMM pool — base-scan (delegated pools
+ * still exist on base under the Delegation Program's ownership, but a
+ * getProgramAccounts scan is owner-filtered to ONYX, so a delegated pool
+ * WOULD drop out of this list. Discovery therefore ALSO derives from
+ * markets: for lobby badging this scan is best-effort, and the market page
+ * checks pool existence per-PDA via getMultipleAccounts-free direct read
+ * that is ownership-agnostic).
+ */
+export async function listAmmPoolMarkets(): Promise<Set<string>> {
+  const connection = getConnection();
+  const accounts = await connection.getProgramAccounts(ONYX_PROGRAM_ID, {
+    filters: [{ memcmp: { offset: 0, bytes: Buffer.from([DISC_AMM_POOL]).toString("base64"), encoding: "base64" } }],
+  });
+  const set = new Set<string>();
+  for (const { pubkey, account } of accounts) {
+    const pool = decodeAmmPool(pubkey, account.data);
+    if (pool) set.add(pool.market);
+  }
+  return set;
+}
+
+/**
+ * Pool existence for one market regardless of delegation state: reads the
+ * pool PDA's raw account on BASE. While delegated, the base copy is owned by
+ * the Delegation Program with data intact (zeroed only during the delegate
+ * CPI itself), so `getAccountInfo != null` remains the reliable existence
+ * signal either way — this is what MarketDetail routes on.
+ */
+export async function ammPoolExists(market: PublicKey): Promise<boolean> {
+  const info = await getConnection().getAccountInfo(ammPoolPda(market));
+  return info !== null && info.data.length >= AMM_POOL_LEN;
+}
+
+/** Every AmmPosition owned by a wallet (base scan; used by the portfolio). */
+export async function listAmmPositionsForOwner(owner: PublicKey): Promise<OnChainAmmPosition[]> {
+  const connection = getConnection();
+  const accounts = await connection.getProgramAccounts(ONYX_PROGRAM_ID, {
+    filters: [
+      { memcmp: { offset: 0, bytes: Buffer.from([DISC_AMM_POSITION]).toString("base64"), encoding: "base64" } },
+      { memcmp: { offset: 8, bytes: owner.toBase58(), encoding: "base58" } },
+    ],
+  });
+  return accounts
+    .map(({ pubkey, account }) => decodeAmmPosition(pubkey, account.data))
+    .filter((p): p is OnChainAmmPosition => p !== null);
 }

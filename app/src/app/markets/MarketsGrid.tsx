@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useMarkets, useScore } from "@/lib/hooks";
+import { useMarkets, useScore, useAmmPoolMarkets } from "@/lib/hooks";
 import {
   type OnChainMarket,
   STATUS_NAMES,
@@ -142,7 +142,7 @@ function ScoreLine({ fixtureId }: { fixtureId: number }) {
   );
 }
 
-function MarketCard({ row, now }: { row: Row; now: number }) {
+function MarketCard({ row, now, isAmm }: { row: Row; now: number; isAmm: boolean }) {
   const m = row.market;
   const total = m.totalSideA + m.totalSideB;
   const emptyPool = total === 0n;
@@ -160,8 +160,15 @@ function MarketCard({ row, now }: { row: Row; now: number }) {
         <span className={styles.fixture} title={`TxLINE fixtureId ${row.fixtureId}`}>
           {row.fixtureLabel}
         </span>
-        <span className="pill" data-tone={statusTone(m.status)}>
-          {STATUS_NAMES[m.status] ?? m.status}
+        <span style={{ display: "inline-flex", gap: 6 }}>
+          {isAmm && (
+            <span className="pill" data-tone="accent" title="AMM market: continuous trading against a seeded pool — buy AND sell anytime before the close.">
+              AMM · sell anytime
+            </span>
+          )}
+          <span className="pill" data-tone={statusTone(m.status)}>
+            {STATUS_NAMES[m.status] ?? m.status}
+          </span>
         </span>
       </div>
 
@@ -243,6 +250,7 @@ function SkeletonCard() {
 
 export function MarketsGrid() {
   const { data, isError, refetch } = useMarkets();
+  const { data: ammMarkets } = useAmmPoolMarkets();
   const now = useNow();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -255,7 +263,14 @@ export function MarketsGrid() {
 
     const groups = new Map<string, OnChainMarket[]>();
     for (const m of kept) {
-      const key = `${m.fixtureId}|${predicateKey(m)}`;
+      // Market KIND is part of the dedupe key: an AMM market must never be
+      // collapsed behind a sealed/plain market with the same predicate (or
+      // vice versa) — they are different products with different panels.
+      // Found live: the first two UI-created AMM markets vanished from the
+      // lobby because they shared the demo fixture's predicate with older
+      // sealed markets and the dedupe kept the settled sealed one.
+      const kind = ammMarkets?.has(m.pda) ? "amm" : m.phase !== 0 ? "sealed" : "plain";
+      const key = `${m.fixtureId}|${predicateKey(m)}|${kind}`;
       const list = groups.get(key) ?? [];
       list.push(m);
       groups.set(key, list);
@@ -283,7 +298,7 @@ export function MarketsGrid() {
       });
     }
     return { rows: built, hiddenCount: hidden, collapsedCount: collapsed };
-  }, [data]);
+  }, [data, ammMarkets]);
 
   const counts = useMemo(
     () => ({
@@ -371,7 +386,7 @@ export function MarketsGrid() {
     body = (
       <div className="grid-cards">
         {shownRows.map((row) => (
-          <MarketCard key={row.market.pda} row={row} now={now} />
+          <MarketCard key={row.market.pda} row={row} now={now} isAmm={ammMarkets?.has(row.market.pda) ?? false} />
         ))}
       </div>
     );

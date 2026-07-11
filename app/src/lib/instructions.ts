@@ -718,3 +718,237 @@ export function buildWithdrawTradingIx(params: {
     data: Buffer.from([IX_WITHDRAW_TRADING]),
   });
 }
+
+// =====================================================================
+// AMM outcome-token trading (docs/AMM_TRADING_DESIGN.md; instructions
+// 29-36, additive). Pools attach ONLY to plain open_market markets
+// (phase == PHASE_NONE) — zero interaction with the sealed state machine.
+// swap_amm keeps the owner READ-ONLY in its metas (ER discipline, same as
+// submit_order_fast); on base the tx-level fee payer is writable anyway.
+// Lifecycle proven live end-to-end before this UI existed:
+// scripts/amm_base_lifecycle.ts (base) + scripts/amm_er_lifecycle.ts (ER
+// concurrent swaps + replay audit) — see BUILD_STATE.md 2026-07-11.
+// =====================================================================
+
+export const IX_CREATE_AMM_POOL = 29; // base
+export const IX_OPEN_AMM_POSITION = 30; // base
+export const IX_DEPOSIT_AMM = 31; // base
+export const IX_DELEGATE_AMM_POOL = 32; // base
+export const IX_DELEGATE_AMM_POSITION = 33; // base
+export const IX_SWAP_AMM = 34; // ER (routed — works on base too)
+export const IX_REDEEM_AMM = 35; // base
+export const IX_WITHDRAW_LP_AMM = 36; // base
+
+export const SWAP_BUY = 0;
+export const SWAP_SELL = 1;
+
+export const SEED_AMM_POOL = Buffer.from("amm");
+export const SEED_AMM_POSITION = Buffer.from("ammpos");
+
+export function ammPoolPda(market: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([SEED_AMM_POOL, market.toBuffer()], ONYX_PROGRAM_ID)[0];
+}
+export function ammPositionPda(market: PublicKey, owner: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync([SEED_AMM_POSITION, market.toBuffer(), owner.toBuffer()], ONYX_PROGRAM_ID)[0];
+}
+
+// ---- open_market (disc 1, base) — the plain, PHASE_NONE market AMM pools
+// attach to. Same 66-byte args as open_market_sealed minus the two window
+// timestamps. ----
+export function buildOpenMarketIx(params: {
+  creator: PublicKey;
+  usdcMint: PublicKey;
+  terms: MarketTerms;
+  paramsHash: Buffer;
+}): { ix: TransactionInstruction; market: PublicKey; vault: PublicKey } {
+  const { creator, usdcMint, terms, paramsHash } = params;
+  const market = marketPdaFromTerms(terms.fixtureId, paramsHash);
+  const vault = vaultPda(market);
+  const args = Buffer.concat([
+    u64le(terms.fixtureId),
+    u32le(terms.statAKey),
+    u32le(terms.statBKey),
+    Buffer.from([terms.op]),
+    Buffer.from([terms.predicate]),
+    i64le(terms.threshold),
+    i64le(terms.deadline),
+    paramsHash,
+  ]);
+  const ix = new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: creator, isSigner: true, isWritable: true },
+      { pubkey: configPda(), isSigner: false, isWritable: false },
+      { pubkey: market, isSigner: false, isWritable: true },
+      { pubkey: vault, isSigner: false, isWritable: true },
+      { pubkey: usdcMint, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([Buffer.from([IX_OPEN_MARKET]), args]),
+  });
+  return { ix, market, vault };
+}
+
+// ---- create_amm_pool (disc 29, base) — real SPL seed into the market vault ----
+export function buildCreateAmmPoolIx(params: {
+  creator: PublicKey;
+  market: PublicKey;
+  usdcMint: PublicKey;
+  seedAmount: bigint;
+  feeBps: number;
+  creatorAta?: PublicKey;
+}): { ix: TransactionInstruction; pool: PublicKey } {
+  const pool = ammPoolPda(params.market);
+  const creatorAta = params.creatorAta ?? getAssociatedTokenAddressSync(params.usdcMint, params.creator);
+  const ix = new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.creator, isSigner: true, isWritable: true },
+      { pubkey: params.market, isSigner: false, isWritable: false },
+      { pubkey: pool, isSigner: false, isWritable: true },
+      { pubkey: vaultPda(params.market), isSigner: false, isWritable: true },
+      { pubkey: creatorAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([Buffer.from([IX_CREATE_AMM_POOL]), u64le(params.seedAmount), u16le(params.feeBps)]),
+  });
+  return { ix, pool };
+}
+
+// ---- open_amm_position (disc 30, base) ----
+export function buildOpenAmmPositionIx(params: { owner: PublicKey; market: PublicKey }): {
+  ix: TransactionInstruction;
+  position: PublicKey;
+} {
+  const position = ammPositionPda(params.market, params.owner);
+  return {
+    position,
+    ix: new TransactionInstruction({
+      programId: ONYX_PROGRAM_ID,
+      keys: [
+        { pubkey: params.owner, isSigner: true, isWritable: true },
+        { pubkey: params.market, isSigner: false, isWritable: false },
+        { pubkey: position, isSigner: false, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([IX_OPEN_AMM_POSITION]),
+    }),
+  };
+}
+
+// ---- deposit_amm (disc 31, base) — real SPL transfer into the vault ----
+export function buildDepositAmmIx(params: {
+  owner: PublicKey;
+  market: PublicKey;
+  amount: bigint;
+  usdcMint: PublicKey;
+  ownerAta?: PublicKey;
+}): TransactionInstruction {
+  const ownerAta = params.ownerAta ?? getAssociatedTokenAddressSync(params.usdcMint, params.owner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.owner, isSigner: true, isWritable: true },
+      { pubkey: params.market, isSigner: false, isWritable: false },
+      { pubkey: ammPositionPda(params.market, params.owner), isSigner: false, isWritable: true },
+      { pubkey: vaultPda(params.market), isSigner: false, isWritable: true },
+      { pubkey: ownerAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([Buffer.from([IX_DEPOSIT_AMM]), u64le(params.amount)]),
+  });
+}
+
+// ---- delegate_amm_pool / delegate_amm_position (discs 32/33, base) ----
+export function buildDelegateAmmPoolIx(params: { payer: PublicKey; market: PublicKey; commitFrequencyMs?: number }): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: delegateAccounts(params.payer, ammPoolPda(params.market)),
+    data: Buffer.concat([Buffer.from([IX_DELEGATE_AMM_POOL]), u32le(params.commitFrequencyMs ?? 0xffffffff)]),
+  });
+}
+export function buildDelegateAmmPositionIx(params: {
+  payer: PublicKey;
+  market: PublicKey;
+  owner: PublicKey;
+  commitFrequencyMs?: number;
+}): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: delegateAccounts(params.payer, ammPositionPda(params.market, params.owner)),
+    data: Buffer.concat([Buffer.from([IX_DELEGATE_AMM_POSITION]), u32le(params.commitFrequencyMs ?? 0xffffffff)]),
+  });
+}
+
+// ---- swap_amm (disc 34) — owner READ-ONLY; min_out is enforced ON-CHAIN
+// (SlippageExceeded 6026), never advisory. args: side u8 | direction u8 |
+// amount_in u64 | min_out u64. ----
+export function buildSwapAmmIx(params: {
+  owner: PublicKey;
+  market: PublicKey;
+  side: number;
+  direction: number; // SWAP_BUY | SWAP_SELL
+  amountIn: bigint;
+  minOut: bigint;
+}): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.owner, isSigner: true, isWritable: false },
+      { pubkey: params.market, isSigner: false, isWritable: false },
+      { pubkey: ammPoolPda(params.market), isSigner: false, isWritable: true },
+      { pubkey: ammPositionPda(params.market, params.owner), isSigner: false, isWritable: true },
+    ],
+    data: Buffer.concat([
+      Buffer.from([IX_SWAP_AMM, params.side, params.direction]),
+      u64le(params.amountIn),
+      u64le(params.minOut),
+    ]),
+  });
+}
+
+// ---- redeem_amm (disc 35, base) — usdc_available anytime; winning tokens 1:1 post-settlement ----
+export function buildRedeemAmmIx(params: {
+  owner: PublicKey;
+  market: PublicKey;
+  usdcMint: PublicKey;
+  ownerAta?: PublicKey;
+}): TransactionInstruction {
+  const ownerAta = params.ownerAta ?? getAssociatedTokenAddressSync(params.usdcMint, params.owner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.owner, isSigner: true, isWritable: true },
+      { pubkey: params.market, isSigner: false, isWritable: false },
+      { pubkey: ammPositionPda(params.market, params.owner), isSigner: false, isWritable: true },
+      { pubkey: vaultPda(params.market), isSigner: false, isWritable: true },
+      { pubkey: ownerAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([IX_REDEEM_AMM]),
+  });
+}
+
+// ---- withdraw_lp_amm (disc 36, base) — settled-only; reserve_winning + fees to lp_owner ----
+export function buildWithdrawLpAmmIx(params: {
+  lpOwner: PublicKey;
+  market: PublicKey;
+  usdcMint: PublicKey;
+  lpOwnerAta?: PublicKey;
+}): TransactionInstruction {
+  const lpOwnerAta = params.lpOwnerAta ?? getAssociatedTokenAddressSync(params.usdcMint, params.lpOwner);
+  return new TransactionInstruction({
+    programId: ONYX_PROGRAM_ID,
+    keys: [
+      { pubkey: params.lpOwner, isSigner: true, isWritable: true },
+      { pubkey: params.market, isSigner: false, isWritable: false },
+      { pubkey: ammPoolPda(params.market), isSigner: false, isWritable: true },
+      { pubkey: vaultPda(params.market), isSigner: false, isWritable: true },
+      { pubkey: lpOwnerAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([IX_WITHDRAW_LP_AMM]),
+  });
+}
