@@ -40,7 +40,7 @@ interface LiveProofResult {
   reason?: string;
 }
 
-export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
+export function SettleClaimPanel({ market, isAmm = false }: { market: OnChainMarket; isAmm?: boolean }) {
   const queryClient = useQueryClient();
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connected } = useWallet();
@@ -56,7 +56,10 @@ export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
 
   const settled = market.status === STATUS_SETTLED || market.status === STATUS_CLAIMED;
   const canSettle = market.status === STATUS_OPEN || market.status === STATUS_LIVE;
-  const canClaim = market.status === STATUS_SETTLED;
+  // claim is the sealed/parimutuel Position path — an AMM market has no
+  // Position accounts (payouts go through redeem_amm in the trade panel),
+  // so offering Claim there guarantees a failed transaction.
+  const canClaim = market.status === STATUS_SETTLED && !isAmm;
 
   async function onSettle() {
     if (!publicKey) return;
@@ -180,6 +183,11 @@ export function SettleClaimPanel({ market }: { market: OnChainMarket }) {
           <a href={explorerTxUrl(lastSig)} target="_blank" rel="noreferrer">
             last tx ↗
           </a>
+        </p>
+      )}
+      {settled && isAmm && (
+        <p className={styles.blurb} style={{ marginTop: 4 }}>
+          AMM market — redeem your position in the trade panel (deposits + winning tokens), not here.
         </p>
       )}
       {settled && (

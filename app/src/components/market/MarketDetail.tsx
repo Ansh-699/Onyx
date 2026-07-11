@@ -172,7 +172,7 @@ export function MarketDetail({ pda }: { pda: string }) {
           </div>
         )}
         <div className={styles.areaSettle}>
-          <SettleClaimPanel market={market} />
+          <SettleClaimPanel market={market} isAmm={amm} />
         </div>
       </div>
     </div>
