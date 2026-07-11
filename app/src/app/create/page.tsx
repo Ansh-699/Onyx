@@ -216,6 +216,7 @@ export default function CreatePage() {
         </div>
       )}
 
+      <div className={`card ${styles.formCard}`}>
       <form className={styles.form} onSubmit={onSubmit}>
         <label className={styles.field}>
           <span>Market type</span>
@@ -365,6 +366,7 @@ export default function CreatePage() {
           {phase === "submitting" ? "Submitting…" : marketType === "sealed" ? "Create sealed market" : "Create AMM market & seed pool"}
         </button>
       </form>
+      </div>
 
       {error && (
         <div className="card" style={{ marginTop: "1.5rem", borderColor: "var(--danger, #b33)" }}>

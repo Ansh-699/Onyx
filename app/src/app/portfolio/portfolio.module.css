@@ -5,6 +5,47 @@
   margin: 0 0 4px;
 }
 
+/* KPI strip — same mono-stat language as the landing hero's .statStrip,
+   kept on a flat .card (portfolio never uses the glass tokens). */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 20px;
+  padding: 20px 24px;
+}
+
+.summaryStat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summaryStat + .summaryStat {
+  border-left: 1px solid var(--border);
+  padding-left: 20px;
+}
+
+.summaryValue {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryValue[data-tone="green"] {
+  color: var(--green);
+}
+
+.summaryLabel {
+  font-size: 0.7rem;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+}
+
 .section {
   margin-top: 28px;
 }
@@ -129,5 +170,15 @@
   .rowMeta {
     width: 100%;
     justify-content: flex-start;
+  }
+  .summary {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .summaryStat + .summaryStat {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
   }
 }
