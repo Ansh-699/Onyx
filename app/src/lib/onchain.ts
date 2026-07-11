@@ -9,6 +9,7 @@
 
 import { Buffer } from "buffer";
 import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+import { AMM_POOL } from "./layouts";
 
 // MagicBlock Delegation Program — owns delegated accounts while on the ER.
 // Declared here (not imported from instructions.ts) to avoid a cycle:
@@ -516,11 +517,11 @@ export async function getAmmPoolsForMarkets(marketPdas: string[]): Promise<Map<s
     const pdas = chunk.map((m) => ammPoolPda(new PublicKey(m)));
     const infos = await connection.getMultipleAccountsInfo(pdas);
     for (const [j, info] of infos.entries()) {
-      if (!info || info.data.length < 176 || info.data[0] !== DISC_AMM_POOL) continue;
+      if (!info || info.data.length < AMM_POOL.LEN || info.data[0] !== DISC_AMM_POOL) continue;
       out.set(chunk[j]!, {
         market: chunk[j]!,
-        reserveA: info.data.readBigUInt64LE(72),
-        reserveB: info.data.readBigUInt64LE(80),
+        reserveA: info.data.readBigUInt64LE(AMM_POOL.RESERVE_A),
+        reserveB: info.data.readBigUInt64LE(AMM_POOL.RESERVE_B),
         delegated: !info.owner.equals(ONYX_PROGRAM_ID),
       });
     }

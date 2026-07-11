@@ -4,20 +4,7 @@ import { useEffect, useState } from "react";
 import { useReferenceOdds } from "@/lib/hooks";
 import styles from "./LiveScore.module.css";
 
-interface FixtureScore {
-  fixtureId: number;
-  p1Goals: number;
-  p2Goals: number;
-  p1Yellows: number;
-  p2Yellows: number;
-  p1Reds: number;
-  p2Reds: number;
-  p1Corners: number;
-  p2Corners: number;
-  seq: number;
-  fetchedAt: number;
-  source: "txline" | "unavailable";
-}
+import type { FixtureScore } from "@/lib/hooks";
 
 // Real data only: polls our server-side proxy (app/src/app/api/scores/
 // [fixtureId]/route.ts), which calls TxLINE's stat-validation endpoint with

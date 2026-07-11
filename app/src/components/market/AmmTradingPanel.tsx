@@ -55,6 +55,7 @@ import {
   buildRevokeSessionIx,
 } from "@/lib/session";
 import { friendlyError, classifyWrongLedger } from "@/lib/errors";
+import { sendViaWallet, sendViaKeypair } from "@/lib/tx";
 import {
   buildOpenAmmPositionIx,
   buildDepositAmmIx,
@@ -175,33 +176,17 @@ export function AmmTradingPanel({
     return result;
   }
 
-  // Same explicit sign-then-broadcast as ErTradingPanel (see that file's
-  // comment for why wallet-adapter's sendTransaction would break ER routing).
+  // Shared explicit sign-then-broadcast (lib/tx.ts — see there for why
+  // wallet-adapter's sendTransaction would break ER routing).
   async function sendVia(conn: Connection, tx: Transaction): Promise<string> {
     if (!publicKey || !signTransaction) throw new Error("wallet not connected");
-    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = blockhash;
-    tx.feePayer = publicKey;
-    const signed = await signTransaction(tx);
-    const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-    const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-    if (conf.value.err) throw new Error(`Transaction ${sig} failed: ${JSON.stringify(conf.value.err)}`);
-    return sig;
+    return sendViaWallet(conn, tx, publicKey, signTransaction);
   }
 
   // Popup-free path: the session keypair signs locally — no wallet call at
   // all. ER-only (ER fees are validator-sponsored, so the session key needs
   // zero SOL; on base a fee payer must burn real lamports).
-  async function sendViaSession(conn: Connection, tx: Transaction, s: TradingSession): Promise<string> {
-    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = blockhash;
-    tx.feePayer = s.keypair.publicKey;
-    tx.sign(s.keypair);
-    const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
-    const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-    if (conf.value.err) throw new Error(`Transaction ${sig} failed: ${JSON.stringify(conf.value.err)}`);
-    return sig;
-  }
+  const sendViaSession = (conn: Connection, tx: Transaction, s: TradingSession) => sendViaKeypair(conn, tx, s.keypair);
 
   async function refreshAll() {
     invalidateDelegationStatus(ammPoolPda(marketPk));

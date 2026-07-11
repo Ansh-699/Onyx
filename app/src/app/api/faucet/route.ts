@@ -18,6 +18,13 @@ import { getConfigUsdcMint } from "@/lib/onchain";
 const MIN_BALANCE = 50_000_000n; // 50.000000 test-USDC (6dp)
 const TOP_UP = 100_000_000n; // mint up to 100.000000 when below MIN_BALANCE
 
+// Per-wallet mint cooldown. Devnet toy token, but this route holds the mint
+// authority — without a throttle anyone can loop it into unbounded supply.
+// In-memory is fine for a single dev-server process.
+// ponytail: in-memory map, move to KV if this ever runs multi-instance.
+const COOLDOWN_MS = 10 * 60_000;
+const lastMintAt = new Map<string, number>();
+
 function loadMintAuthority(): Keypair {
   const path = process.env.ANCHOR_WALLET;
   if (!path) throw new Error("ANCHOR_WALLET not set (server env) — see app/.env.local");
@@ -44,9 +51,11 @@ export async function POST(req: NextRequest) {
 
     const acct = await getAccount(connection, userAta.address);
     let minted = 0n;
-    if (acct.amount < MIN_BALANCE) {
+    const last = lastMintAt.get(user.toBase58()) ?? 0;
+    if (acct.amount < MIN_BALANCE && Date.now() - last >= COOLDOWN_MS) {
       minted = TOP_UP;
       await mintTo(connection, authority, usdcMint, userAta.address, authority, minted);
+      lastMintAt.set(user.toBase58(), Date.now());
     }
 
     return NextResponse.json({

@@ -11,6 +11,7 @@ import { useMemo } from "react";
 import type { Connection } from "@solana/web3.js";
 import {
   type OnChainMarket,
+  type OnChainAmmPool,
   PHASE_MATCHED,
   PHASE_NONE,
   TRADING_STATUS_LOCKED,
@@ -18,8 +19,63 @@ import {
   priceToPercent,
 } from "@/lib/onchain";
 import { useSealedOrders, useTradingAccountsForMarket } from "@/lib/hooks";
+import { spotPriceScaled } from "@/lib/ammMath";
 import { fmtUsdc } from "./format";
 import styles from "./PricePanel.module.css";
+
+/**
+ * AMM variant: the pool's live reserves ARE the price, so this shows the
+ * real tradeable Yes/No prices in cents — unlike the sealed panel below,
+ * whose Market.total_side_a/b figures are only written by batch matches and
+ * therefore read 0/empty on an AMM market (the confusing dual-price state
+ * this component replaces).
+ */
+export function AmmPricePanel({ pool, isDelegated }: { pool: OnChainAmmPool; isDelegated: boolean }) {
+  const priceA = spotPriceScaled(pool.reserveA, pool.reserveB);
+  const priceB = 1_000_000n - priceA;
+  const centsA = Math.round(Number(priceA) / 10_000);
+  const pctA = Number(priceA) / 10_000;
+
+  return (
+    <div className={`card ${styles.wrap}`}>
+      <div className={styles.topRow}>
+        <div>
+          <div className={styles.bigLabel}>Yes (Side A) · pool price</div>
+          <div className={styles.big}>{centsA}¢</div>
+        </div>
+        <dl className={styles.stats}>
+          <div>
+            <dt>No (Side B)</dt>
+            <dd>{100 - centsA}¢</dd>
+          </div>
+          <div>
+            <dt>Pool reserves</dt>
+            <dd>
+              {fmtUsdc(pool.reserveA)} A / {fmtUsdc(pool.reserveB)} B
+            </dd>
+          </div>
+          <div>
+            <dt>Fees accrued</dt>
+            <dd>{fmtUsdc(pool.feesAccrued)} tUSDC</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className={styles.bar} data-empty="false" aria-hidden>
+        <span className={styles.barA} style={{ width: `${pctA}%` }} />
+      </div>
+      <div className={styles.barLegend}>
+        <span>Yes {pctA.toFixed(1)}%</span>
+        <span>No {(100 - pctA).toFixed(1)}%</span>
+      </div>
+
+      <p className="muted" style={{ fontSize: "0.75rem", marginTop: 10 }}>
+        Live CPMM price from the pool&apos;s current on-chain reserves ({isDelegated ? "read from the Ephemeral Rollup" : "base devnet"}) —
+        price_yes = reserve_no / (reserve_yes + reserve_no). Every buy/sell moves it; nothing here is simulated.
+      </p>
+    </div>
+  );
+}
 
 const CHART_W = 600;
 const CHART_H = 150;

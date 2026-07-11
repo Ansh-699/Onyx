@@ -32,7 +32,7 @@ import { LiveScore } from "@/components/LiveScore";
 import { SealedOrderPanel } from "@/components/SealedOrderPanel";
 import { SettleClaimPanel } from "@/components/SettleClaimPanel";
 import { PhaseTimeline } from "./PhaseTimeline";
-import { PricePanel } from "./PricePanel";
+import { PricePanel, AmmPricePanel } from "./PricePanel";
 import { ErTradingPanel } from "./ErTradingPanel";
 import { AmmTradingPanel } from "./AmmTradingPanel";
 import { shortAddr } from "./format";
@@ -141,7 +141,14 @@ export function MarketDetail({ pda }: { pda: string }) {
 
       <div className={styles.cols} data-sealed={sealed || amm}>
         <div className={styles.areaPrice}>
-          <PricePanel market={market} connection={query.connection} />
+          {/* AMM markets price off pool reserves; the sealed panel's batch-
+              derived figures read 0/empty there and looked broken next to
+              the trade panel's real ¢ price. */}
+          {amm && routedPool.data ? (
+            <AmmPricePanel pool={routedPool.data} isDelegated={routedPool.isDelegated} />
+          ) : (
+            <PricePanel market={market} connection={query.connection} />
+          )}
         </div>
         {amm && routedPool.data && (
           <div className={styles.areaTrade}>

@@ -19,7 +19,10 @@ const base = new Connection("https://api.devnet.solana.com", "confirmed");
 const ONYX = new PublicKey("4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB");
 const admin = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(`${process.env.HOME}/.config/solana/id.json`, "utf8"))));
 
-const LP_SEED = 2_000_000n; // 2 tUSDC per pool
+// 25 tUSDC per pool: deep enough that a judge's ~0.5 tUSDC trade moves the
+// price ~1¢ (feels like a market), shallow enough the LP-risk story stays
+// visible. We control the devnet mint, so depth is free.
+const LP_SEED = 25_000_000n;
 const FEE_BPS = 100;
 const OP_NONE = 0xff, OP_ADD = 0;
 const CMP_GT = 0;

@@ -49,6 +49,7 @@ import {
 import { invalidateDelegationStatus } from "@/lib/erRouting";
 import { useTradingAccount, useTradingAccountsForMarket } from "@/lib/hooks";
 import { friendlyError, classifyWrongLedger } from "@/lib/errors";
+import { sendViaWallet } from "@/lib/tx";
 import {
   buildDelegateMarketIx,
   buildOpenTradingAccountIx,
@@ -195,38 +196,13 @@ export function ErTradingPanel({
     return result;
   }
 
-  // Deliberately NOT wallet-adapter's `sendTransaction(tx, connection)`
-  // convenience wrapper. That delegates actual broadcast to the wallet's
-  // own `signAndSendTransaction`, which real Phantom (and likely other
-  // wallets) submits through ITS OWN internal RPC endpoint — decoupled
-  // from whatever `connection` object is passed in. That's invisible and
-  // harmless for ordinary base-layer devnet dApps (Phantom's own devnet
-  // RPC and ours both see the same base ledger), but it would silently
-  // defeat ER routing here: an ER-bound instruction could get broadcast to
-  // Phantom's default RPC instead of the resolved ER endpoint. Signing and
-  // broadcasting as two explicit steps keeps full control over exactly
-  // which endpoint receives each transaction, which is the whole point of
-  // this file's connection routing.
+  // Deliberately NOT wallet-adapter's `sendTransaction` — that would
+  // broadcast via the wallet's own RPC and silently defeat ER routing.
+  // Shared implementation (incl. the conf.value.err check that a live bug
+  // taught us confirmTransaction does NOT do itself) lives in lib/tx.ts.
   async function sendVia(conn: Connection, tx: Transaction): Promise<string> {
     if (!publicKey || !signTransaction) throw new Error("wallet not connected");
-    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = blockhash;
-    tx.feePayer = publicKey;
-    const signed = await signTransaction(tx);
-    const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-    const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-    // A REAL bug, caught live: confirmTransaction does NOT throw on a
-    // program-level failure (custom program error) -- it resolves normally
-    // with the error tucked into conf.value.err, and it's the caller's job
-    // to check it. Without this check, an on-chain failure (e.g. the
-    // open_trading_account market-ownership bug this same test run also
-    // caught) would still log a "successful" signature and clear the busy
-    // state, while nothing the transaction was supposed to do actually
-    // happened on-chain — a silent failure indistinguishable from success.
-    if (conf.value.err) {
-      throw new Error(`Transaction ${sig} failed: ${JSON.stringify(conf.value.err)}`);
-    }
-    return sig;
+    return sendViaWallet(conn, tx, publicKey, signTransaction);
   }
 
   async function refreshAll() {

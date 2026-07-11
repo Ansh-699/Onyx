@@ -233,20 +233,12 @@ export function useAmmPositionsForOwner(owner: PublicKey | null) {
   });
 }
 
-export interface FixtureScore {
-  fixtureId: number;
-  p1Goals: number;
-  p2Goals: number;
-  p1Yellows: number;
-  p2Yellows: number;
-  p1Reds: number;
-  p2Reds: number;
-  p1Corners: number;
-  p2Corners: number;
-  seq: number;
-  fetchedAt: number;
-  source: "txline" | "unavailable";
-}
+// Type-only imports from the server modules that own these shapes (type
+// imports are erased at compile time — no server env code reaches the
+// client bundle). One declaration each, not three.
+import type { FixtureScore } from "./txlineScores";
+import type { ReferenceOdds } from "./txlineOdds";
+export type { FixtureScore, ReferenceOdds };
 
 export interface LiveFixture {
   fixtureId: number;
@@ -298,17 +290,6 @@ export function useScore(fixtureId: number | null | undefined) {
     placeholderData: keepPreviousData,
     enabled: fixtureId !== null && fixtureId !== undefined,
   });
-}
-
-export interface ReferenceOdds {
-  fixtureId: number;
-  homePct: number | null;
-  drawPct: number | null;
-  awayPct: number | null;
-  bookmaker: string | null;
-  ts: number | null;
-  fetchedAt: number;
-  source: "txline" | "unavailable";
 }
 
 /**

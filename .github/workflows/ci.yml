@@ -1,0 +1,51 @@
+# CI: the same three gates every phase of this project ran by hand —
+# program tests (real SBF via mollusk, so the solana toolchain + build-sbf
+# are required, not optional), app typecheck + unit tests, and a production
+# build. Anything judges clone must pass all three.
+
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  program:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            programs/onyx/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('programs/onyx/Cargo.lock') }}
+      - name: Install Solana toolchain (build-sbf)
+        run: |
+          curl -sSfL https://release.anza.xyz/stable/install | sh
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+      - name: Build SBF binary (mollusk tests execute the real .so)
+        working-directory: programs/onyx
+        run: cargo build-sbf
+      - name: Program test suite
+        working-directory: programs/onyx
+        run: cargo test --release
+
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        working-directory: app
+        run: bunx tsc --noEmit
+      - name: Unit tests (ammMath vs fpmm vectors)
+        working-directory: app
+        run: bun test src/lib/ammMath.test.ts
+      - name: Production build
+        working-directory: app
+        run: bun run build
