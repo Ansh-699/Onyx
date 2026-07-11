@@ -159,6 +159,19 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+body {
+  /* Soft ambient washes behind everything: liquid-glass panels
+     (backdrop-filter) are invisible over a flat background — this is what
+     the blur/tint actually act on. Deliberately faint (≤12% accent, no
+     hard-edged blob), fixed so glass panels slide over it on scroll. */
+  background:
+    radial-gradient(640px 420px at 12% 8%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%),
+    radial-gradient(760px 520px at 88% 26%, color-mix(in srgb, var(--accent-strong) 9%, transparent), transparent 70%),
+    radial-gradient(700px 480px at 40% 90%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
 a {
   color: var(--accent);
   text-decoration: none;
