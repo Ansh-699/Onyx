@@ -73,7 +73,7 @@ async function main() {
   );
   console.log(`inventory: ${markets.length} markets, ${positions.length} positions, ${sealedOrders.length} sealed orders, ${ammPools.length} amm pools, ${ammPositions.length} amm positions\n`);
 
-  const byMarket = <T extends { account: { data: Buffer } }>(list: T[], off: number) => {
+  const byMarket = <T extends { account: { data: Buffer } }>(list: readonly T[], off: number) => {
     const m = new Map<string, T[]>();
     for (const item of list) {
       const key = new PublicKey(item.account.data.subarray(off, off + 32)).toBase58();

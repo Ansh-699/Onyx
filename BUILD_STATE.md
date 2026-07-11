@@ -1368,3 +1368,23 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
   AMM directional dust. No account is deleted — Solana has no close path
   here; the v2 lobby's default filter (Phase 3) hides retired markets, an
   Archive toggle keeps them inspectable.
+
+## 2026-07-11 — v2 Phase 3 COMPLETE: Polymarket-style lobby + trade ticket
+
+- **Lobby default = "Trading now"**: active AMM markets only (pool exists +
+  deadline ahead + Open/Live); "Archive" tab shows every market ever —
+  retired pre-v2 markets stay inspectable, nothing hidden dishonestly.
+- **Delegation-agnostic pool discovery** (`getAmmPoolsForMarkets`): the old
+  owner-scan missed ER-delegated pools — ALL six v2 seeded markets were
+  invisible to it. Now each market's pool PDA is read directly
+  (getMultipleAccountsInfo, any owner), returning reserves for prices;
+  verified live: all 6 delegated pools found, 50¢/50¢.
+- **Cards Polymarket-style**: competition + kickoff countdown or LIVE badge
+  with score, plain-English question, **Yes/No price chips in cents** from
+  real pool reserves (parimutuel stake-share fallback), pool size, "AMM ·
+  trade anytime · ⚡ ER" note.
+- **Trade ticket**: side buttons lead with the ¢ price (implied % secondary);
+  slippage tolerance tucked behind an "Advanced" disclosure (still enforced
+  on-chain, unchanged).
+- Liquid glass: the global `.card` primitive already carries the full
+  treatment (tint + blur + highlight, both themes) — every panel inherits.

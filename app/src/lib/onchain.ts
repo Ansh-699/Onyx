@@ -466,6 +466,42 @@ export async function listAmmPoolMarkets(): Promise<Set<string>> {
   return set;
 }
 
+export interface AmmPoolSummary {
+  market: string;
+  reserveA: bigint;
+  reserveB: bigint;
+  delegated: boolean;
+}
+
+/**
+ * Delegation-AGNOSTIC pool lookup for a known market list: derives each
+ * market's pool PDA and reads it directly (getMultipleAccountsInfo), so a
+ * pool currently delegated to the ER — owned by the Delegation Program on
+ * base — is still found, unlike the owner-filtered scan above. Reserves for
+ * a delegated pool are the base-layer snapshot frozen at delegation time
+ * (live reserves stream on the market page, which routes reads to the ER);
+ * good enough for lobby ¢ prices, disclosed via `delegated`.
+ */
+export async function getAmmPoolsForMarkets(marketPdas: string[]): Promise<Map<string, AmmPoolSummary>> {
+  const connection = getConnection();
+  const out = new Map<string, AmmPoolSummary>();
+  for (let i = 0; i < marketPdas.length; i += 100) {
+    const chunk = marketPdas.slice(i, i + 100);
+    const pdas = chunk.map((m) => ammPoolPda(new PublicKey(m)));
+    const infos = await connection.getMultipleAccountsInfo(pdas);
+    for (const [j, info] of infos.entries()) {
+      if (!info || info.data.length < 176 || info.data[0] !== DISC_AMM_POOL) continue;
+      out.set(chunk[j]!, {
+        market: chunk[j]!,
+        reserveA: info.data.readBigUInt64LE(72),
+        reserveB: info.data.readBigUInt64LE(80),
+        delegated: !info.owner.equals(ONYX_PROGRAM_ID),
+      });
+    }
+  }
+  return out;
+}
+
 /**
  * Pool existence for one market regardless of delegation state: reads the
  * pool PDA's raw account on BASE. While delegated, the base copy is owned by

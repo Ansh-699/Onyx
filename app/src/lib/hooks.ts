@@ -18,7 +18,8 @@ import {
   ammPoolExists,
   getAmmPool,
   getAmmPosition,
-  listAmmPoolMarkets,
+  getAmmPoolsForMarkets,
+  type AmmPoolSummary,
   listAmmPositionsForOwner,
   type OnChainMarket,
   type OnChainSealedOrder,
@@ -201,13 +202,19 @@ export function useAmmPosition(marketPda: string, owner: PublicKey | null, conne
   });
 }
 
-/** Market-PDA set with AMM pools — the lobby's "AMM" badge (best-effort: a pool currently delegated to the ER drops out of this base owner-scan). ~30s poll. */
-export function useAmmPoolMarkets() {
-  return useQuery<Set<string>>({
-    queryKey: ["ammPoolMarkets"],
-    queryFn: listAmmPoolMarkets,
+/**
+ * AMM pools for the lobby's market list — delegation-agnostic PDA probe, so
+ * ER-delegated pools (all v2 seeded markets) are found too, with reserves
+ * for the ¢ price buttons. Map.has(marketPda) drives the AMM badge.
+ */
+export function useAmmPoolMarkets(marketPdas: string[] | undefined) {
+  const key = marketPdas?.join(",") ?? "";
+  return useQuery<Map<string, AmmPoolSummary>>({
+    queryKey: ["ammPools", key],
+    queryFn: () => getAmmPoolsForMarkets(marketPdas!),
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,
+    enabled: !!marketPdas && marketPdas.length > 0,
   });
 }
 

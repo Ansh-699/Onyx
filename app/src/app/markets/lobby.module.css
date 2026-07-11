@@ -186,26 +186,58 @@
   color: var(--text-faint);
 }
 
-/* Pool split: green fill = side A ("Yes") share; the rest of the track reads
-   as side B. data-empty keeps it a neutral track when there's no pool. */
-.poolBar {
-  margin-top: auto; /* pin bar + bottom row to the card bottom */
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surface-3);
-  overflow: hidden;
+/* Polymarket-style Yes/No price chips — real pool prices in cents. Spans,
+   not buttons: the whole card is one link; these read as prices. */
+.yesNoRow {
+  display: flex;
+  gap: 8px;
+  margin-top: auto; /* pin to the card bottom */
 }
 
-.poolBar[data-empty="false"] {
-  background: var(--red-dim);
+.yesBtn,
+.noBtn {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: filter 120ms ease;
 }
 
-.poolBarFill {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-  background: var(--green);
-  opacity: 0.75;
+.yesBtn {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+}
+
+.noBtn {
+  background: color-mix(in srgb, var(--red, #f87171) 12%, transparent);
+  color: var(--red, #f87171);
+}
+
+.yesBtn strong,
+.noBtn strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.yesBtn[data-empty="true"],
+.noBtn[data-empty="true"] {
+  opacity: 0.45;
+}
+
+.marketCard:hover .yesBtn,
+.marketCard:hover .noBtn {
+  filter: brightness(1.15);
+}
+
+.cardBottomLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .cardBottom {

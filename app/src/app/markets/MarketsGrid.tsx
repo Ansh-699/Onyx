@@ -21,6 +21,7 @@ import {
   STATUS_EXPIRED,
   STATUS_REFUNDED,
 } from "@/lib/onchain";
+import type { AmmPoolSummary } from "@/lib/onchain";
 import { describeMarketPredicate, rawPredicateText } from "@/lib/statKeys";
 import { getFixtureInfo, fixtureDisplayName, getFixtureStartTimeMs, primeLiveFixtures } from "@/lib/fixtureMeta";
 import styles from "./lobby.module.css";
@@ -105,16 +106,18 @@ interface Row {
   title: string;
   raw: string;
   searchText: string;
+  /** Tradeable now: AMM pool exists, deadline in the future, status Open/Live. */
+  active: boolean;
 }
 
-type StatusFilter = "all" | "open" | "live" | "settled";
+type StatusFilter = "active" | "open" | "settled" | "archive";
 type SortMode = "volume" | "newest";
 
-function matchesStatusFilter(status: number, filter: StatusFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "open") return status === STATUS_OPEN;
-  if (filter === "live") return status === STATUS_LIVE || status === STATUS_SETTLING;
-  return status === STATUS_SETTLED || status === STATUS_CLAIMED;
+function matchesStatusFilter(row: Row, filter: StatusFilter): boolean {
+  if (filter === "active") return row.active;
+  if (filter === "open") return row.market.status === STATUS_OPEN || row.market.status === STATUS_LIVE;
+  if (filter === "settled") return row.market.status === STATUS_SETTLED || row.market.status === STATUS_CLAIMED;
+  return true; // archive = everything, nothing hidden
 }
 
 // ---------------------------------------------------------------------------
@@ -142,17 +145,25 @@ function ScoreLine({ fixtureId }: { fixtureId: number }) {
   );
 }
 
-function MarketCard({ row, now, isAmm }: { row: Row; now: number; isAmm: boolean }) {
+function MarketCard({ row, now, pool }: { row: Row; now: number; pool: AmmPoolSummary | undefined }) {
   const m = row.market;
+  const isAmm = !!pool;
   const total = m.totalSideA + m.totalSideB;
-  const emptyPool = total === 0n;
-  // Pool-implied share of side A ("Yes"). With an empty pool there is no
-  // market price — show 50% but say so, never imply a price that isn't there.
-  const pct = emptyPool ? 50 : Math.round(Number((m.totalSideA * 1000n) / total) / 10);
-  const vol = Number(total) / 1e6;
   const startMs = getFixtureStartTimeMs(row.fixtureId);
   const started = startMs !== null && startMs <= now;
   const showOutcome = m.status === STATUS_SETTLED || m.status === STATUS_CLAIMED;
+
+  // Price of YES (side A) in cents. AMM: pool-implied price_A = b/(a+b) —
+  // the real, tradeable price. Parimutuel fallback: stake share.
+  let yesCents: number | null = null;
+  let vol = Number(total) / 1e6;
+  if (pool && pool.reserveA + pool.reserveB > 0n) {
+    yesCents = Math.round(Number((pool.reserveB * 100n) / (pool.reserveA + pool.reserveB)));
+    vol = Number(pool.reserveA + pool.reserveB) / 1e6;
+  } else if (total > 0n) {
+    yesCents = Math.round(Number((m.totalSideA * 100n) / total));
+  }
+  const noCents = yesCents !== null ? 100 - yesCents : null;
 
   return (
     <Link href={`/market/${m.pda}`} className={`card ${styles.marketCard}`}>
@@ -161,14 +172,16 @@ function MarketCard({ row, now, isAmm }: { row: Row; now: number; isAmm: boolean
           {row.fixtureLabel}
         </span>
         <span style={{ display: "inline-flex", gap: 6 }}>
-          {isAmm && (
-            <span className="pill" data-tone="accent" title="AMM market: continuous trading against a seeded pool — buy AND sell anytime before the close.">
-              AMM · sell anytime
+          {started && row.active && (
+            <span className="pill" data-tone="green">
+              LIVE
             </span>
           )}
-          <span className="pill" data-tone={statusTone(m.status)}>
-            {STATUS_NAMES[m.status] ?? m.status}
-          </span>
+          {!row.active && (
+            <span className="pill" data-tone={statusTone(m.status)}>
+              {STATUS_NAMES[m.status] ?? m.status}
+            </span>
+          )}
         </span>
       </div>
 
@@ -176,9 +189,11 @@ function MarketCard({ row, now, isAmm }: { row: Row; now: number; isAmm: boolean
         {started ? (
           <ScoreLine fixtureId={row.fixtureId} />
         ) : startMs !== null ? (
-          <span>{formatKickoff(startMs - now)}</span>
+          <span>
+            {row.competition} · {formatKickoff(startMs - now)}
+          </span>
         ) : (
-          <span className="faint">{row.competition} · kickoff time unknown</span>
+          <span className="faint">{row.competition}</span>
         )}
       </div>
 
@@ -191,31 +206,34 @@ function MarketCard({ row, now, isAmm }: { row: Row; now: number; isAmm: boolean
         </div>
       )}
 
-      {/* Pool split bar: green fill = side A ("Yes") share. Stays a neutral
-          empty track when the pool is empty — a fill there would imply a
-          market price that doesn't exist. */}
-      <div className={styles.poolBar} data-empty={emptyPool} aria-hidden>
-        {!emptyPool && <span className={styles.poolBarFill} style={{ width: `${pct}%` }} />}
+      {/* Polymarket-style Yes/No price buttons — real pool prices in cents. */}
+      <div className={styles.yesNoRow} aria-hidden={yesCents === null}>
+        <span className={styles.yesBtn} data-empty={yesCents === null}>
+          <span>Yes</span>
+          <strong>{yesCents !== null ? `${yesCents}¢` : "—"}</strong>
+        </span>
+        <span className={styles.noBtn} data-empty={noCents === null}>
+          <span>No</span>
+          <strong>{noCents !== null ? `${noCents}¢` : "—"}</strong>
+        </span>
       </div>
 
       <div className={styles.cardBottom}>
-        <div>
-          <div className={styles.probValue} data-empty={emptyPool}>
-            {pct}
-            <span className={styles.probUnit}>%</span>
-          </div>
-          <div className={styles.probLabel}>{emptyPool ? "pool-implied (empty pool)" : "Yes · pool-implied"}</div>
-        </div>
-        <div className={styles.cardBottomRight}>
+        <div className={styles.cardBottomLeft}>
+          {isAmm && (
+            <span className={styles.probLabel} title="AMM market: continuous trading against a seeded pool — buy AND sell anytime before kickoff. Instant, gas-free on the Ephemeral Rollup with a trading session.">
+              AMM · trade anytime{pool?.delegated ? " · ⚡ ER" : ""}
+            </span>
+          )}
           {showOutcome && (
             <span className="pill" data-tone="green">
               {OUTCOME_NAMES[m.outcome] ?? m.outcome} won
             </span>
           )}
-          <span className={styles.volume}>
-            {formatVolume(vol)} <span className={styles.volumeUnit}>test-USDC</span>
-          </span>
         </div>
+        <span className={styles.volume}>
+          {formatVolume(vol)} <span className={styles.volumeUnit}>tUSDC {isAmm ? "pool" : "vol"}</span>
+        </span>
       </div>
     </Link>
   );
@@ -250,14 +268,17 @@ function SkeletonCard() {
 
 export function MarketsGrid() {
   const { data, isError, refetch } = useMarkets();
-  const { data: ammMarkets } = useAmmPoolMarkets();
+  const marketPdas = useMemo(() => (data ?? []).map((m) => m.pda), [data]);
+  // Delegation-agnostic pool probe: finds ER-delegated pools too, with
+  // reserves for the ¢ price buttons.
+  const { data: ammPools } = useAmmPoolMarkets(marketPdas.length > 0 ? marketPdas : undefined);
   // Live TxLINE fixture names: priming the overlay makes every
   // getFixtureInfo/fixtureDisplayName call below resolve real names.
   const liveFixtures = useLiveFixtures();
   primeLiveFixtures(liveFixtures.data);
   const now = useNow();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [sort, setSort] = useState<SortMode>("volume");
 
   const { rows, hiddenCount, collapsedCount } = useMemo(() => {
@@ -273,7 +294,7 @@ export function MarketsGrid() {
       // Found live: the first two UI-created AMM markets vanished from the
       // lobby because they shared the demo fixture's predicate with older
       // sealed markets and the dedupe kept the settled sealed one.
-      const kind = ammMarkets?.has(m.pda) ? "amm" : m.phase !== 0 ? "sealed" : "plain";
+      const kind = ammPools?.has(m.pda) ? "amm" : m.phase !== 0 ? "sealed" : "plain";
       const key = `${m.fixtureId}|${predicateKey(m)}|${kind}`;
       const list = groups.get(key) ?? [];
       list.push(m);
@@ -290,6 +311,10 @@ export function MarketsGrid() {
       const fixtureLabel = fixtureDisplayName(fixtureId); // honest fallback when unknown
       const title = describeMarketPredicate(shown, info ?? undefined);
       const raw = rawPredicateText(shown);
+      const active =
+        (ammPools?.has(shown.pda) ?? false) &&
+        (shown.status === STATUS_OPEN || shown.status === STATUS_LIVE) &&
+        Number(shown.deadline) * 1000 > now;
       built.push({
         market: shown,
         extra: group.length - 1,
@@ -299,24 +324,25 @@ export function MarketsGrid() {
         title,
         raw,
         searchText: `${fixtureLabel} ${title} ${raw} ${fixtureId}`.toLowerCase(),
+        active,
       });
     }
     return { rows: built, hiddenCount: hidden, collapsedCount: collapsed };
-  }, [data, ammMarkets]);
+  }, [data, ammPools, now]);
 
   const counts = useMemo(
     () => ({
-      all: rows.length,
-      open: rows.filter((r) => matchesStatusFilter(r.market.status, "open")).length,
-      live: rows.filter((r) => matchesStatusFilter(r.market.status, "live")).length,
-      settled: rows.filter((r) => matchesStatusFilter(r.market.status, "settled")).length,
+      active: rows.filter((r) => matchesStatusFilter(r, "active")).length,
+      open: rows.filter((r) => matchesStatusFilter(r, "open")).length,
+      settled: rows.filter((r) => matchesStatusFilter(r, "settled")).length,
+      archive: rows.length,
     }),
     [rows],
   );
 
   const shownRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = rows.filter((r) => matchesStatusFilter(r.market.status, statusFilter));
+    let list = rows.filter((r) => matchesStatusFilter(r, statusFilter));
     if (q) list = list.filter((r) => r.searchText.includes(q));
     const sorted = [...list];
     if (sort === "volume") {
@@ -335,13 +361,13 @@ export function MarketsGrid() {
   }, [rows, search, statusFilter, sort]);
 
   const loading = data === undefined && !isError;
-  const filtersActive = search.trim() !== "" || statusFilter !== "all";
+  const filtersActive = search.trim() !== "" || statusFilter !== "active";
 
   const FILTERS: { id: StatusFilter; label: string; count: number }[] = [
-    { id: "all", label: "All", count: counts.all },
+    { id: "active", label: "Trading now", count: counts.active },
     { id: "open", label: "Open", count: counts.open },
-    { id: "live", label: "Live", count: counts.live },
     { id: "settled", label: "Settled", count: counts.settled },
+    { id: "archive", label: "Archive", count: counts.archive },
   ];
 
   let body: React.ReactNode;
@@ -372,17 +398,21 @@ export function MarketsGrid() {
   } else if (shownRows.length === 0) {
     body = (
       <div className={`card ${styles.stateCard}`}>
-        <p className="muted">No markets match your search or filters.</p>
+        <p className="muted">
+          {statusFilter === "active" && !search.trim()
+            ? "No markets are trading right now — check the Archive for past markets."
+            : "No markets match your search or filters."}
+        </p>
         <button
           type="button"
           className="button"
           data-variant="ghost"
           onClick={() => {
             setSearch("");
-            setStatusFilter("all");
+            setStatusFilter(statusFilter === "active" ? "archive" : "active");
           }}
         >
-          Clear filters
+          {statusFilter === "active" && !search.trim() ? "Browse archive" : "Clear filters"}
         </button>
       </div>
     );
@@ -390,7 +420,7 @@ export function MarketsGrid() {
     body = (
       <div className="grid-cards">
         {shownRows.map((row) => (
-          <MarketCard key={row.market.pda} row={row} now={now} isAmm={ammMarkets?.has(row.market.pda) ?? false} />
+          <MarketCard key={row.market.pda} row={row} now={now} pool={ammPools?.get(row.market.pda)} />
         ))}
       </div>
     );

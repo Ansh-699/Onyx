@@ -88,6 +88,8 @@ function tolToBps(input: string): number | null {
   return Math.round(n * 100);
 }
 const pct = (scaled: bigint) => `${(Number(scaled) / 10_000).toFixed(1)}%`;
+/** Pool price (1e6-scaled) as Polymarket-style cents: 0.62 → "62¢". */
+const cents = (scaled: bigint) => `${Math.round(Number(scaled) / 10_000)}¢`;
 const CLUSTER = "devnet";
 
 export function AmmTradingPanel({
@@ -431,7 +433,7 @@ export function AmmTradingPanel({
           >
             <span className={styles.sideName}>{s.name}</span>
             <span className={styles.sideShare}>
-              {pct(s.price)} · reserve {fmtUsdc(s.reserve)}
+              <strong style={{ fontSize: "1.05rem" }}>{cents(s.price)}</strong> · {pct(s.price)} implied
             </span>
           </button>
         ))}
@@ -516,11 +518,14 @@ export function AmmTradingPanel({
               <span className={styles.fieldLabel}>{direction === SWAP_BUY ? "Spend (tUSDC)" : `Sell (${side === SIDE_A ? "A" : "B"} tokens)`}</span>
               <input value={amountStr} onChange={(e) => setAmountStr(e.target.value)} inputMode="decimal" placeholder="0.5" data-testid="amm-amount" />
             </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Slippage tolerance (%)</span>
+          </div>
+          <details style={{ fontSize: "0.8rem" }}>
+            <summary className="muted" style={{ cursor: "pointer" }}>Advanced · slippage tolerance {tolStr}%</summary>
+            <label className={styles.field} style={{ marginTop: 6, maxWidth: 200 }}>
+              <span className={styles.fieldLabel}>Slippage tolerance (%) — enforced on-chain</span>
               <input value={tolStr} onChange={(e) => setTolStr(e.target.value)} inputMode="decimal" placeholder="1.0" data-testid="amm-tolerance" />
             </label>
-          </div>
+          </details>
 
           {quote && (
             <div className={styles.availRow} data-testid="amm-quote">
