@@ -88,13 +88,19 @@
   color: var(--text);
   text-decoration: none;
   transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  /* liquid-glass panel — same tokens as the landing hero (.heroGlass) */
+  background: var(--glass-tint);
+  border-color: var(--glass-border);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 60px -32px var(--glass-shadow);
 }
 
 .marketCard:hover {
   text-decoration: none;
   transform: translateY(-2px);
   border-color: var(--border-strong);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45), 0 18px 40px -16px rgba(0, 0, 0, 0.65);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 2px 4px var(--glass-shadow), 0 18px 40px -16px var(--glass-shadow);
 }
 
 @media (prefers-reduced-motion: reduce) {

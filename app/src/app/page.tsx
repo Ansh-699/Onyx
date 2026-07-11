@@ -5,7 +5,6 @@
 import Link from "next/link";
 import { listMarkets, STATUS_SETTLED, STATUS_CLAIMED } from "@/lib/onchain";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
-import { LiquidBlobs } from "@/components/LiquidBlobs";
 import styles from "./landing.module.css";
 
 export const dynamic = "force-dynamic";
@@ -100,7 +99,6 @@ export default async function LandingPage() {
     <div className={styles.page}>
       {/* ---- Hero: the one liquid-glass brand moment on this page ---- */}
       <section className={styles.hero}>
-        <LiquidBlobs />
         <div className={styles.heroGlass}>
           <div className={styles.heroContent}>
             <span className="pill" data-tone="green">
