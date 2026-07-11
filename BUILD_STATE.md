@@ -1347,3 +1347,24 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
   "bookmaker ref" row — implied 1X2 percents labeled reference-only.
 - **/create picker** now lists the live upcoming fixture window
   (kickoff-date labels), static list as fallback.
+
+## 2026-07-11 — v2 Phase 4 COMPLETE: old markets retired (drained where legitimate), 6 fresh ER-ready AMM markets seeded
+
+- **`app/scripts/seed_amm_markets.ts`**: seeds AMM markets from the LIVE
+  TxLINE fixture window (2 varied predicates per fixture: goals/corners/
+  yellows, incl. combined ADD markets), deadline = kickoff, admin is LP
+  (2 tUSDC each), **market + pool pre-delegated to the ER** — Start-session
+  is one signature on every seeded market. Re-runnable (skips existing).
+  Seeded 6 across Norway–England, Argentina–Switzerland, and France–Spain
+  (#18237038 — picked up by the live window, never in the static table).
+- **`app/scripts/retire_markets.ts`**: keeper-style drain of every pre-v2
+  vault the protocol legitimately allows: permissionless `refund_expired` +
+  `refund_unrevealed` (funds go to the position/order OWNER's ATA, never
+  ours), plus owner-signed `redeem_amm`/`withdraw_lp_amm` for keys this
+  repo holds. First run returned funds across ~15 markets and emptied
+  several vaults; second run drains 0 (idempotent, paths exhausted).
+  Remaining residuals are honestly categorized: settled-market claims
+  belonging to discarded demo wallets (their money, not ours to move) and
+  AMM directional dust. No account is deleted — Solana has no close path
+  here; the v2 lobby's default filter (Phase 3) hides retired markets, an
+  Archive toggle keeps them inspectable.
