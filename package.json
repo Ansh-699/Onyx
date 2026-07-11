@@ -12,7 +12,9 @@
     "phase0": "bun run services/ingestion/src/phase0.ts",
     "auth": "bun run services/ingestion/src/auth.ts",
     "typecheck": "bunx tsc --noEmit",
-    "demo": "bash scripts/run-demo.sh"
+    "demo": "bash scripts/run-demo.sh",
+    "demo:amm": "cd app && bun scripts/amm_base_lifecycle.ts",
+    "demo:amm-er": "cd app && bun scripts/amm_er_lifecycle.ts"
   },
   "engines": {
     "bun": ">=1.3.0"

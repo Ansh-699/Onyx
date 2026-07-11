@@ -1,13 +1,18 @@
 # ONYX
 
-**Trustless sports settlement on Solana, built directly on TxODDS's TxLINE.**
+**Polymarket-style continuous trading on a MagicBlock Ephemeral Rollup,
+with trustless settlement on Solana built directly on TxODDS's TxLINE.**
 
-Every market settles via a live CPI into TxLINE's own `validate_stat` program —
-not an admin key, not an off-chain resolver. Every settlement produces a
-receipt anyone can independently verify against public RPC. Bets can be
-placed as **sealed orders** — hidden until a batch closes, then matched at a
-single uniform price with no time-priority advantage, killing front-running
-and copy-trading without adding any trust dependency.
+Two market types, one settlement truth. **AMM markets**: buy *and sell*
+outcome tokens at any moment — the pool is the counterparty, seeded with
+real capital, swaps confirm in ~1s on an Ephemeral Rollup with slippage
+protection enforced on-chain. **Sealed-batch markets**: bets hidden until
+a batch closes, then matched at a single uniform price with no
+time-priority advantage — killing front-running and copy-trading without
+adding any trust dependency. Either way, every market settles via a live
+CPI into TxLINE's own `validate_stat` program — not an admin key, not an
+off-chain resolver — and produces a receipt anyone can independently
+verify against public RPC.
 
 Built for the [TxODDS World Cup Hackathon](https://superteam.fun/earn/listing/prediction-markets-and-settlement/)
 — Prediction Markets & Settlement track. Native Pinocchio (`no_std`), no
@@ -19,11 +24,12 @@ program, Next.js frontend, and TxLINE data services.
 | **Devnet program** | [`4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB`](https://explorer.solana.com/address/4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB?cluster=devnet) |
 | **TxLINE oracle used** | `6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J` (txoracle, devnet) |
 | **Run the app** | `cd app && bun install && bun run dev` |
-| **Reproduce the full lifecycle in one command** | `bun run demo` (from the repo root) |
+| **Reproduce the sealed lifecycle in one command** | `bun run demo` (from the repo root) |
+| **Reproduce the AMM lifecycle in one command** | `bun run demo:amm` (base layer) · `bun run demo:amm-er` (concurrent swaps on the ER + replay audit) |
 
 ---
 
-## The five-part story
+## The six-part story
 
 **1. Trustless settlement.** `settle_market` CPIs directly into TxLINE's
 `validate_stat` and reads back a boolean. No admin discretion, no off-chain
@@ -40,27 +46,47 @@ TxLINE's per-fixture stat keys (`stat[key] {>,<,=} threshold`, optionally
 combining two stats) — corners, cards, goals, whatever TxLINE tracks per
 match — not just a binary final-score bet.
 
-**4. MEV-proof sealed-bid privacy (Level 1).** Bets are submitted as a
-32-byte commitment hash + locked collateral — side, size, and price are not
-derivable from on-chain state until the bettor reveals. After the reveal
-window, a single deterministic uniform-price batch match runs: no order
-benefits from submission order, so front-running and copy-trading have
-nothing to react to. [Real tx →](#the-sealed-order-lifecycle-real-tx-signatures)
+**4. Sell-anytime AMM markets — Polymarket-style continuous trading.**
+The pool is the counterparty (Gnosis-style fixed-product market maker over
+virtual complete-set outcome tokens), so anyone can buy **and sell** at any
+moment before the close — no matching window, no waiting for the other
+side. Liquidity is **real seeded capital** from the market's creator, who
+becomes the LP and genuinely carries adverse-selection risk (observed live
+in testing: both an LP gain and an LP loss). Every swap's output is
+computed **on-chain from the reserves at execution time** — the client only
+sends `amount_in` and `min_out`, and the user's slippage tolerance is
+enforced by the program (`SlippageExceeded`, proven with a deliberate
+on-chain revert), never advisory. The pool's solvency identity
+(`vault == Σ deposits + sets_outstanding + fees`) held **to the lamport**
+at every checkpoint of every live proof, and every proof run drained its
+market vault to **exactly zero** after settlement.
+[Real tx →](#the-amm-lifecycle-real-tx-signatures)
 
-**5. Sub-second execution on a MagicBlock Ephemeral Rollup, same MEV-proof
-guarantee.** This is the app's **default trading flow** (`ErTradingPanel`,
-the lead panel on every market page) — not a side demo. A market and each
-trader's `TradingAccount` delegate to an Ephemeral Rollup; bet, resize, and
-cancel all confirm sub-second there, still as a sealed commitment matched
-in short deterministic batches (3s cadence), not instant execution against
-fabricated counterparty liquidity. Once a batch clears, state undelegates
-back to base for settlement and withdrawal — the same `settle_market` /
-oracle CPI in Part 1, untouched. Every read and write is routed to
-whichever ledger (base or the resolved ER endpoint) currently holds that
-account's authoritative state — see [`src/lib/erRouting.ts`](app/src/lib/erRouting.ts)
-— and a wrong-ledger race (e.g. a transaction landing right as an account
-un/delegates) is caught and surfaced as a plain-language retry message, not
-a raw RPC error. [Real tx →](#the-er-fast-lifecycle-real-tx-signatures)
+**5. Sub-second execution on a MagicBlock Ephemeral Rollup — both market
+types.** AMM swaps run on the ER as pure account-data mutation (market +
+pool + positions delegate together): ~1s confirmation, validator-sponsored
+fees, and **concurrent swaps from independent wallets serialize correctly**
+— proven by firing 4 genuinely concurrent swaps (`Promise.all`, 3-4 landing
+in the *same ER slot*) and then replaying every slot-order-consistent
+serialization through the same CPMM math: exactly **one** ordering
+reproduces the final on-chain reserves and every wallet's position delta,
+so no swap ever priced off stale reserves and no update was lost. Sealed
+markets get the same ER speed for commit/reveal/match (`ErTradingPanel`,
+3s batch cadence). Either way, state undelegates back to base for
+settlement — the same oracle CPI in Part 1, untouched. Every read and
+write is routed to whichever ledger currently holds that account's
+authoritative state ([`src/lib/erRouting.ts`](app/src/lib/erRouting.ts)),
+and wrong-ledger races surface as plain-language retry messages.
+[Real tx →](#the-er-fast-lifecycle-real-tx-signatures)
+
+**6. MEV honesty, by construction and by disclosure.** Sealed-batch
+markets are MEV-proof: bets are 32-byte commitments until reveal, then one
+deterministic uniform-price match — no order benefits from submission
+order. AMM markets are **not** MEV-proof (no AMM is — ordering belongs to
+the sequencer), and the UI says so in-panel rather than hiding it, pointing
+at sealed markets as the MEV-proof alternative. On-chain `min_out` bounds
+the damage of any adverse ordering; it doesn't eliminate it. Two market
+types, honestly labeled trade-offs. [Real tx →](#the-sealed-order-lifecycle-real-tx-signatures)
 
 ---
 
@@ -157,6 +183,52 @@ one call, back to base) → `settle_market` (same real oracle CPI, base) →
 `withdraw_trading` (base). `cancel_order_fast` works at any point after
 commit, including after an undelegate races ahead of it, as a safety net.
 
+### The AMM flow (sell-anytime markets)
+
+```mermaid
+flowchart TB
+    subgraph offchain3["Off-chain"]
+        App3["Next.js app — AmmTradingPanel\nlive quotes from src/lib/ammMath.ts\n(the same math the program runs)"]
+    end
+
+    subgraph base3["Devnet base layer"]
+        MarketP["Market PDA (plain, phase=None)"]
+        Pool["AmmPool PDA\nreserve_a · reserve_b · sets · fees"]
+        PositionA["AmmPosition PDA\n(one per user per market)"]
+        VaultP["Vault (SPL token escrow)\nnever moves during swaps"]
+    end
+
+    subgraph er3["Ephemeral Rollup (optional acceleration)"]
+        PoolER["AmmPool (delegated)"]
+        PositionER["AmmPosition (delegated)"]
+    end
+
+    TxOracle3["txoracle (TxODDS)\nvalidate_stat — same program, both market types"]
+
+    App3 -->|"open_market + create_amm_pool (one tx,\nreal SPL seed from the creator = the LP)"| Pool
+    App3 -->|"open_amm_position + deposit_amm\n(real SPL transfer in)"| PositionA
+    PositionA <-->|deposit / redeem| VaultP
+    App3 -->|"swap_amm: amount_in + min_out ONLY —\noutput computed on-chain from live reserves,\nSlippageExceeded if min_out beaten"| Pool
+    Pool -.->|"delegate_amm_pool (optional)"| PoolER
+    PositionA -.->|"delegate_amm_position (optional)"| PositionER
+    App3 -->|"swap_amm on the ER: ~1s,\nconcurrent-safe (replay-audited)"| PoolER
+    PoolER -.->|"undelegate: market + pool + positions\nin ONE call"| Pool
+    MarketP -->|"settle_market CPI (unchanged)"| TxOracle3
+    App3 -->|"redeem_amm: deposits anytime,\nwinning tokens 1:1 post-settlement"| VaultP
+    App3 -->|"withdraw_lp_amm: winning reserve + fees\nto the LP, settled-only"| VaultP
+```
+
+**Lifecycle (AMM flow):** `open_market` + `create_amm_pool` (base, one
+signature — the creator's real tUSDC seeds reserves 50/50 and they become
+the LP) → users `open_amm_position` + `deposit_amm` (base, real SPL
+transfer) → `swap_amm` buy/sell freely — works on base as-is, or delegate
+market+pool+position to the ER for ~1s swaps — until the deadline →
+undelegate if delegated → `settle_market` (same oracle CPI) → `redeem_amm`
+(deposits withdrawable **anytime**, winning tokens redeem 1:1 after
+settlement, losing tokens die worthless) → `withdraw_lp_amm` (winning-side
+reserve + accrued fees to the LP — which can be less than the seed; LP
+risk is real and disclosed).
+
 ---
 
 ## Verifiable proof — real devnet transactions
@@ -232,6 +304,65 @@ below), surfaced by the same reconciliation:
 `/api/house-counter-fast`, same disclosure as the classic flow's house
 counterparty.
 
+### The AMM lifecycle (real tx signatures)
+
+Three independent proof tiers, run in order (each is a permanent script,
+re-runnable):
+
+**Tier 1 — base-layer lifecycle, solvency reconciled to the lamport**
+(`bun run demo:amm`; market
+[`8PAJAkwZKxao5NCLbZpuaGZpJVi5b2gKc8Gf71EXZheg`](https://explorer.solana.com/address/8PAJAkwZKxao5NCLbZpuaGZpJVi5b2gKc8Gf71EXZheg?cluster=devnet)).
+Every swap's `min_out` was set to the *exact* output predicted off-chain by
+the same math the program runs — one unit of divergence anywhere would have
+reverted the swap, so the run itself proves the on-chain math and the UI's
+quote engine are identical.
+
+| Stage | Tx | What to check |
+|---|---|---|
+| **Create + seed pool** | [`3d1sW7oB...`](https://explorer.solana.com/tx/3d1sW7oBZFwWkpRV7tJN31yQ3LU8aD354uNxr8bLDEec56WuoUPKb8xHk2JP3KzZMdGb92w9F71J2LbE8B2pDDJK?cluster=devnet) | A real SPL transfer of the creator's 1.0 tUSDC into the market vault; `AmmPool` reserves initialize (1e6, 1e6) = 50/50. |
+| **Buy** | [`4vzVeXWC...`](https://explorer.solana.com/tx/4vzVeXWC24nETBNXLdS9amhh9TNMEwLVQEwZbfKD3J4zwc3K1oFwG1jNGjFRt3BiB6F57ctQ35z1Fb67dpBMCGJX?cluster=devnet) | Pool reserves move; the buyer's `AmmPosition.tokens_a` credits by exactly the amount the CPMM formula predicts. The vault does NOT move — swaps are pure account-data mutation. |
+| **Sell (the sell-anytime half)** | [`5iG36jm9...`](https://explorer.solana.com/tx/5iG36jm9NKFyeQh4MGGsCERLb1Rtkwfpa7Y29SRTJREAiKSTMBh5mKJKMhsYyuDcPRhag9p9yL3N2UHc9syC26JT?cluster=devnet) | Tokens sold back into the pool mid-market, collateral credited net of fee — no matching window, no counterparty wait. |
+| **Deliberate slippage revert** | [`5d7vh1Nk...`](https://explorer.solana.com/tx/5d7vh1NkStEeGbRMgKE9JW9mRLbLE4RmxmUjNWXP3N5z7TUqBqBdutfm7wF8rAqau4cycFXtDfhiRDPsGPLU1Hvr?cluster=devnet) | A buy sent with `min_out = expected+1` **failed on-chain** with `Custom(6026)` (`SlippageExceeded`) — the slippage guard is program-enforced, not a UI promise. Nothing was traded. |
+| **Settlement (live TxLINE proof)** | [`3exyJQKK...`](https://explorer.solana.com/tx/3exyJQKK8VQBEW4jdHtJ2UC33vv9nYQSz6KizWDv1x3uDYy6DKHnQgNj3ixEjfsWhLXpYpJSkc236mqTr7hi1D8x?cluster=devnet) | Same `settle_market` oracle CPI as every other market type — the proof was fetched live from TxLINE (at a *newer* seq than the bundled demo capture, confirming genuinely live retrieval). |
+| **LP withdraw** | [`2QJdHtRh...`](https://explorer.solana.com/tx/2QJdHtRhSCyYuksJtyGxV7o5bTaHZ6o842SKGCxzdNu8B6HMfD4ZzfMedP8kg9BsUQ8TF6xtuJcGqoTgkMFdZt76?cluster=devnet) | Winning-side reserve + accrued fees to the LP. In this run the LP got back **less than seeded** (−0.0226 tUSDC) — adverse selection is real, not theoretical. After this tx the vault reads **exactly 0**: payouts (419,246 + 403,329 + 977,425) == deposits (1,800,000), to the lamport. |
+
+**Tier 2 — concurrent real swaps on the Ephemeral Rollup, replay-audited**
+(`bun run demo:amm-er`; market
+[`uiUoQP7Pk4KupNcaZxDeUAdx1HtmcwYuEF9ryB7ondH`](https://explorer.solana.com/address/uiUoQP7Pk4KupNcaZxDeUAdx1HtmcwYuEF9ryB7ondH?cluster=devnet)).
+The question that decides whether an AMM belongs on an ER at all: do
+concurrent swaps against one shared pool serialize correctly, or can two
+swaps price off the same stale reserves? Answered by construction (output
+computed on-chain from execution-time reserves) and then **audited**: 2
+rounds × 4 wallets fired genuinely concurrent swaps (`Promise.all`; the ER
+batched 3-4 of them into the *same slot* — maximal contention), then every
+slot-order-consistent serialization was replayed through the same CPMM
+math. Exactly **1 of 6** (and 1 of 24 in an all-same-slot round of the
+first run) reproduced the final on-chain reserves AND every wallet's
+position delta — the landing order is uniquely determined, zero lost
+updates, zero stale-priced swaps.
+
+| Stage | Ledger | Tx | What to check |
+|---|---|---|---|
+| **Delegate pool** (first live use of disc 32) | base | [`5fRGcetP...`](https://explorer.solana.com/tx/5fRGcetPPK7qSnspagzGUr6AscPddEUkPQDmiJD6i1nYNuEeQ5GHxz7LXZXUsaQrmBAAYLBBC9ARjvE4gtA3FzuG?cluster=devnet) | `AmmPool`'s owner flips to the Delegation Program on base; the MagicBlock router reports market+pool+4 positions co-located on one ER node. |
+| **Concurrent buy (one of 4 in the same batch)** | **ER** | [`27BSnni3...`](https://explorer.solana.com/tx/27BSnni3fK2aiHpM71EtP25BgqZP5V9nRGG5mdnxpsHfnG4FgJVWmXKDLsvoMLegwWVuTfesY2eAnCepKAL4R9yn?cluster=devnet) | Finalized against the ER endpoint, **not found** on base — the standing two-ledger evidence bar. Batch wall-clock for all 4 concurrent swaps: ~1.0–1.6s. |
+| **Concurrent sell (mixed round)** | **ER** | [`4DhyyJmc...`](https://explorer.solana.com/tx/4DhyyJmcyNmoN2Cqm8pPXDiu5nka3vRCGfPaGaSo4rmby26EGgURREs9zSckFJtvdDfBtLoDVQ5CweYo5QjbRBMz?cluster=devnet) | Round 2 mixed 2 sells + 2 buys concurrently — path-dependent operations in both directions, still uniquely serialized. |
+| **Undelegate market+pool+4 positions, ONE call** | ER→base | [`2jQVNgpg...`](https://explorer.solana.com/tx/2jQVNgpgZVfFKiDK27KK83f28EcevkQcdEJ36DMYpQmdxdxCxjeF2eDjdM5g6gguQBcX2LYhEjaBvcrFasrPrnmU?cluster=devnet) | After commit, all 16 pool+position fields on base are **identical** to the final ER state — the delegation round-trip loses nothing. |
+| **Settle + unwind** | base | [`3Lup9m2s...`](https://explorer.solana.com/tx/3Lup9m2stAnU7A6jr9PRrLkr8413awEhnqtjScoF2ZL7aXdcDB1wtB55CC9dCCMW98oiuaSCMqzUkdtbxnTEhv39?cluster=devnet) | Live-proof settle, 4 redemptions + LP withdraw ([`4sytsodU...`](https://explorer.solana.com/tx/4sytsodUj5vhiMRH4BtqJA4diJk7YGfFYoFMqktNcvtECTqbrsJH7SmSDqin3iF2jpiYNFWCFiSHTDqSX4PHuEop?cluster=devnet)) — vault drains to **exactly 0**, Σ payouts == 2,600,000 deposited. |
+
+**Tier 3 — the same lifecycle through the real browser UI**
+(`app/scripts/amm_browser_proof.ts`; market
+[`B4XdJKU36ctz9PQsDMyWR2KLCF2iE4f8PH7Fi5c1wHKi`](https://explorer.solana.com/address/B4XdJKU36ctz9PQsDMyWR2KLCF2iE4f8PH7Fi5c1wHKi?cluster=devnet)
+— **created through `/create`'s AMM toggle**, wallet-signed). Buy
+[`5yQ8Z9Ed...`](https://explorer.solana.com/tx/5yQ8Z9EdaiyuMFujJjj9uGkfPLZ83MgXq6tg843sdc7mKP7zQg1vurimAahLDa84HisdxwBKiJFg2kc51gBVhQSd?cluster=devnet)
+(836ms), sell
+[`4N1vZM4s...`](https://explorer.solana.com/tx/4N1vZM4sSEApRkKVue2Wf76z48JC2xCwLRiyW7ADuQBqV4RzPAkCp4y1toqSTMPC18NaoW6fN8cYDSyiYzALmyjt?cluster=devnet)
+(968ms), redeem, LP withdraw — and a **deliberate slippage revert rendered
+in the panel**: the injected wallet stalled its signature while another
+trader moved the pool price (the exact race `min_out` exists for), the
+pre-built transaction landed, failed on-chain with 6026, and the UI showed
+the plain-language slippage message. Vault drained to exactly 0 after the
+final redemption, same as every other run.
+
 ---
 
 ## Being straight about what's real (no bluff)
@@ -240,9 +371,9 @@ This project's whole thesis is "verify, don't trust" — so here's exactly
 where that does and doesn't extend, including the parts that took
 iteration to get right:
 
-- **Demo liquidity is seeded, not organic.** A solo bettor's sealed order
-  needs a counterparty for the batch match to produce a fill. In this
-  build, [`app/src/app/api/house-counter/route.ts`](app/src/app/api/house-counter/route.ts)
+- **Sealed-market demo liquidity is seeded, not organic.** A solo bettor's
+  sealed order needs a counterparty for the batch match to produce a fill.
+  In this build, [`app/src/app/api/house-counter/route.ts`](app/src/app/api/house-counter/route.ts)
   — a server-only Next.js route, never shipped to the browser — submits a
   deterministic opposite-side sealed order from the same devnet wallet that
   already acts as this build's test-USDC mint authority, so a judge running
@@ -251,8 +382,29 @@ iteration to get right:
   engine or organic liquidity.** It doesn't change any on-chain trust
   boundary — the house submits a normal, publicly-visible transaction like
   any other bettor, and the program cannot distinguish it from anyone
-  else's order. A production deployment needs real two-sided order flow, or
-  a proper liquidity pool with its own risk model — neither is built here.
+  else's order. **AMM markets are the "proper liquidity pool with its own
+  risk model" an earlier draft of this paragraph said wasn't built — it now
+  is**: the pool is seeded once with the creator-LP's real capital, the
+  curve is the counterparty for every buy and sell, no fabricated order
+  flow anywhere in that path. What remains true: it's a single seed-once
+  LP (no LP shares / add-remove liquidity — roadmap), and the sealed flow
+  still uses the disclosed house counterparty.
+- **AMM LP risk is real — demonstrated, not just disclosed.** The LP's
+  withdrawal is winning-side reserve + fees, which can be less than the
+  seed when traders load the side that wins. Across the recorded live runs
+  the LP finished **up** once (+0.004 tUSDC — fees beat flow) and **down**
+  twice (−0.023, −0.032 — adverse selection won), on real devnet
+  transactions linked above. The UI's LP card and /create's preview both
+  state this before any capital moves.
+- **AMM markets are not MEV-proof, and the panel says so.** Continuous
+  pricing is front-runnable in principle — ordering belongs to the
+  sequencer (the ER's today, the base leader otherwise). The user's
+  slippage tolerance is enforced on-chain (`min_out` → `SlippageExceeded`
+  revert, proven live including through the browser), which bounds the
+  damage but doesn't eliminate ordering games. The in-panel honesty note
+  names sealed-batch markets as the MEV-proof alternative — the two market
+  types are complementary trade-offs, not a claim that one is strictly
+  better.
 - **New wallets get test-USDC from a devnet faucet, not organically.** A
   fresh wallet has no ATA and no balance for the test-USDC mint, and
   `submit_sealed_order` does a raw SPL transfer with no ATA-creation
@@ -350,19 +502,28 @@ To rebuild and redeploy the on-chain program yourself:
 ```bash
 cd programs/onyx
 cargo build-sbf
-cargo test                                      # 44 host tests, incl. real
+cargo test                                      # 92 host tests, incl. real
                                                  # mollusk-svm SBF execution
                                                  # (loads the actual compiled
-                                                 # onyx.so) of refund_expired,
-                                                 # withdraw_trading, and
-                                                 # run_batch_match_fast --
-                                                 # the fund-custody-critical
-                                                 # and completeness-check
-                                                 # logic, with a simulated
-                                                 # Clock so no real waiting
+                                                 # onyx.so): the fund-custody-
+                                                 # critical sealed/ER logic
+                                                 # (refund_expired,
+                                                 # withdraw_trading,
+                                                 # run_batch_match_fast) AND
+                                                 # the full AMM surface --
+                                                 # CPMM math properties,
+                                                 # swap/redeem/LP-withdraw
+                                                 # units, and two
+                                                 # adversarially-ordered
+                                                 # end-to-end lifecycles
+                                                 # asserting the solvency
+                                                 # identity after every step
+                                                 # and a to-the-lamport-zero
+                                                 # vault post-settlement
 solana program deploy target/deploy/onyx.so \
   --program-id 4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB \
   --url https://api.devnet.solana.com
+# (if programdata is smaller than the new binary: solana program extend <id> <bytes> first)
 ```
 
 Other useful scripts (all under [`services/ingestion/src/`](services/ingestion/src/),
@@ -393,25 +554,37 @@ via real button clicks, but it's not literally a human clicking Phantom).
 
 ```
 programs/onyx/           on-chain program (Pinocchio, no_std, native)
+  src/fpmm.rs                    CPMM (fixed-product) math — pure, host-unit-tested
   src/state/trading_account.rs   ER-fast per-user-per-market account
+  src/state/{amm_pool,amm_position}.rs   AMM pool + per-user position accounts
   src/instructions/{open_trading_account,deposit_trading,delegate_trading_account,
     submit_order_fast,reveal_order_fast,cancel_order_fast,run_batch_match_fast,
     undelegate_trading_account,withdraw_trading}.rs   the 9 ER-fast instructions (disc 20-28)
+  src/instructions/{create_amm_pool,open_amm_position,deposit_amm,delegate_amm_pool,
+    delegate_amm_position,swap_amm,redeem_amm,withdraw_lp_amm}.rs   the 8 AMM instructions (disc 29-36)
+  src/amm_lifecycle_tests.rs     cross-instruction AMM property suite (real SBF)
+docs/AMM_TRADING_DESIGN.md       the AMM design doc + per-phase proof plan (shipped)
 app/                     Next.js frontend — lobby, create, market, receipt, portfolio
   src/lib/instructions.ts    single source of truth for every instruction's
                              byte encoding (shared by the wallet-signed UI
-                             and the verification script)
+                             and the verification scripts)
+  src/lib/ammMath.ts         client CPMM quote engine — same math as fpmm.rs,
+                             proven unit-exact against the deployed program
   src/lib/erRouting.ts       phase-based RPC routing: resolves base vs. the
                              MagicBlock router's ER endpoint per account
-  src/components/market/ErTradingPanel.tsx   the default trade panel (ER-fast)
+  src/components/market/AmmTradingPanel.tsx  the AMM trade panel (sell anytime)
+  src/components/market/ErTradingPanel.tsx   the sealed trade panel (ER-fast)
   src/components/SealedOrderPanel.tsx        the classic flow, still available
   src/app/api/house-counter/      demo liquidity seeding — see "no bluff" above
   src/app/api/house-counter-fast/ same, for the ER-fast flow
   src/app/api/faucet/             devnet test-USDC faucet — see "no bluff" above
-  scripts/verify-flow.ts     the reproducible classic-flow full-lifecycle proof
+  scripts/verify-flow.ts          the reproducible classic-flow full-lifecycle proof
   scripts/er_browser_proof.ts     the reproducible ER-fast full-lifecycle proof
+  scripts/amm_base_lifecycle.ts   AMM tier-1 proof (`bun run demo:amm`)
+  scripts/amm_er_lifecycle.ts     AMM tier-2 ER concurrency proof (`bun run demo:amm-er`)
+  scripts/amm_browser_proof.ts    AMM tier-3 browser-driven proof
 services/ingestion/      TxLINE auth/data client + devnet test harnesses
-scripts/run-demo.sh      one-command demo (`bun run demo`)
+scripts/run-demo.sh      one-command sealed demo (`bun run demo`)
 BUILD_STATE.md           full build/proof log, chronological
 OPEN_QUESTIONS.md        everything still open, and why it doesn't block
 PRIVATE_PAYMENTS_CUSTODY_ANALYSIS.md   why confidential-USDC was rejected
@@ -432,11 +605,11 @@ instruction and its discriminator in the meantime.
 
 | Requirement | Status |
 |---|---|
-| Functional build / live testnet application | ✅ Deployed devnet program `4LpMzq6...`, live app, real tx signatures above — both the classic sealed-order flow and the default ER-fast flow |
-| TxLINE data as a primary input | ✅ Live SSE stream drives the lobby/market views; a real captured `validate_stat` proof drives settlement — both surfaces, not just one |
+| Functional build / live testnet application | ✅ Deployed devnet program `4LpMzq6...`, live app, real tx signatures above — sell-anytime AMM markets, the sealed-order flow, and the ER-fast flow |
+| TxLINE data as a primary input | ✅ Live SSE stream drives the lobby/market views; settlement fetches live `validate_stat` proofs from TxLINE for any fixture (bundled fallback for the demo fixture) — both surfaces, not just one |
 | Devnet acceptable | ✅ Per the track's own guidance ("devnet is safer/faster for a hackathon... either is allowed") |
 | README + repo | ✅ This file; **repo is on GitHub but currently private — make it public (or grant judge access) before submitting** |
-| Demo video (≤5 min, "evaluated heavily") | ⬜ Not recorded — yours to do; lead with the ER-fast flow (the default trade panel) since that's the headline feature. `bun run demo` gives a scriptable, reproducible take of the classic flow that can't flake mid-recording; the ER-fast flow doesn't have an equivalent one-liner yet (`app/scripts/er_browser_proof.ts` proves it but needs Playwright + a running dev server, not camera-ready) — recording that path live, or investing in a matching one-command harness first, is still worth deciding before the deadline |
+| Demo video (≤5 min, "evaluated heavily") | ⬜ Not recorded — yours to do; suggested arc: create an AMM market on /create (one signature, real seed) → buy → **sell** (the sell-anytime headline) → show the slippage-protection quote → settle → redeem. `bun run demo` (sealed) and `bun run demo:amm` / `demo:amm-er` (AMM, incl. the ER concurrency + replay audit) are scriptable takes that can't flake mid-recording |
 | API-feedback answer | ⬜ Mentioned as a day-11 deliverable in the original planning notes — not written this session; confirm whether the current Superteam Earn submission form still asks for it |
 | Settlement currency requirement | No explicit USDC/USDT requirement found in the track rules I could check — ONYX uses a devnet SPL token standing in for USDC (see "no bluff" section) |
 

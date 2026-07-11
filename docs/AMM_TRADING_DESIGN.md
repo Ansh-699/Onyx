@@ -1,12 +1,25 @@
 # AMM Trading Design — sell-anytime outcome markets on the ER
 
-**Status: DESIGN + FEASIBILITY, no AMM code written.** Direction locked by
-the project owner (2026-07-10): pivot ONYX to Polymarket-style continuous
-trading via an outcome-token AMM — the curve is the counterparty, so users
-can buy AND sell at any moment without another trader on the other side.
-Explicitly NOT an order book/CLOB. Built **additively** as a new market
-type alongside the sealed-batch flow; the sealed-batch build is the
-guaranteed-shippable fallback and must not be broken or deleted.
+**Status: SHIPPED (all phases A–E complete, 2026-07-11).** This document
+was written as the Phase-0 design + feasibility call before any AMM code
+existed, and is preserved as-designed; §5's plan was then executed with
+every per-phase on-chain proof landing (see BUILD_STATE.md 2026-07-11
+entries for the full evidence): **A** — 92/92 `cargo test` incl. the
+adversarial-ordering lifecycle suite, swap = 993/1,994 CU; **B** — devnet
+upgrade + base lifecycle solvent to the lamport at both checkpoints, live
+on-chain SlippageExceeded revert; **C** — 2×4 genuinely concurrent real
+swaps on the ER, landing order UNIQUELY reproduced by the replay audit
+(1/6 and 1/24 serializations), solvency exact across the delegation
+round-trip and post-settlement; **D** — full trading UI browser-proven
+incl. an on-screen slippage revert and a UI-created market drained to a
+zero vault; **E** — README repositioning + full regression sweep. The
+sealed-flow regression passed at every gate. Original direction lock
+(2026-07-10): pivot ONYX to Polymarket-style continuous trading via an
+outcome-token AMM — the curve is the counterparty, so users can buy AND
+sell at any moment without another trader on the other side. Explicitly
+NOT an order book/CLOB. Built **additively** as a new market type
+alongside the sealed-batch flow; the sealed-batch build is the
+guaranteed-shippable fallback and was not broken or deleted.
 
 What this trades away, stated up front: sealed-batch MEV-resistance does
 not apply to AMM markets. An AMM is front-runnable in principle like any

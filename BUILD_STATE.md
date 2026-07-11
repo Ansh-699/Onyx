@@ -1196,3 +1196,53 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
   lifecycle green again (exit 0, settle `2c8yZ3S9…`).
 - Next: Phase E (README/docs repositioning + full regression sweep + demo
   prep) — pending report-back.
+
+## 2026-07-11 — AMM Phase E COMPLETE: README repositioned, full regression sweep green — PIVOT SHIPPED (A–E all done)
+
+- **README rewritten** around the pivot: headline is now "Polymarket-style
+  continuous trading on a MagicBlock Ephemeral Rollup" with trustless
+  TxLINE settlement; five-part story → six parts (part 4 = sell-anytime
+  AMM with the solvency/slippage evidence; part 5 = ER for BOTH market
+  types incl. the concurrency replay audit; part 6 = the MEV honesty
+  framing: sealed = MEV-proof by construction, AMM = not MEV-proof and
+  says so in-panel). New AMM architecture diagram + lifecycle (all 3
+  mermaid blocks verified rendering via mermaid-cli before commit — the
+  quoted-parens lesson holds). New "AMM lifecycle (real tx signatures)"
+  proof section: three tiers (base solvency run, ER concurrency run,
+  browser run) with explorer-linked sigs and what-to-check columns,
+  including the on-chain SlippageExceeded revert and the LP-loss run.
+  No-bluff updated: the old "a proper liquidity pool ... isn't built here"
+  paragraph now honestly says the AMM IS that pool (single seed-once LP
+  disclosed), plus new entries for demonstrated LP risk (up once, down
+  twice across recorded runs) and the AMM-not-MEV-proof disclosure.
+  cargo test count corrected 44 → 92; repo layout + submission checklist
+  refreshed (demo-video suggestion now leads with the AMM sell journey).
+- **Demo prep**: `bun run demo:amm` (base lifecycle + lamport-exact
+  solvency) and `bun run demo:amm-er` (ER concurrency + replay audit)
+  wired into the root package.json alongside the sealed `bun run demo`.
+  `demo:amm` verified end-to-end post-wiring: fresh market
+  `DuE49QGF9LAtcCLNgaQF3qfn1j8H9xMjXdGtZxwBgmR9`, PASS, both checkpoints
+  exact.
+- **`docs/AMM_TRADING_DESIGN.md`** status header updated: DESIGN →
+  SHIPPED, with the per-phase evidence summary (A: 92/92 + CU; B: both
+  checkpoints + live revert; C: unique replay serialization; D: browser
+  incl. on-screen revert; E: this sweep).
+- **Full regression sweep, all green**:
+  - `cargo test --release`: **92/92** (re-run, unchanged).
+  - **Sealed-flow re-proof** (the per-gate discipline, final run): full
+    verify-flow lifecycle green, market
+    `9CVcj671CPNkjyF7qSucGwY7dujZeswoKaAVYRFiC7wd`, settle
+    `2U3JfJhbwcS3…`, claim `5jXMdDtgu2L1…`, payout formula exact.
+  - **8-route browser sweep**: / , /markets, /create, sealed market page,
+    AMM market page, /portfolio, /demo/mev, /receipt/[market] — all HTTP
+    200 with the expected content rendered (two initial "failures" were
+    sweep-expectation bugs, not product bugs: /portfolio correctly
+    wallet-gates, /demo/mev's copy says "front-running" not "MEV";
+    re-checked with honest expectations, 8/8).
+- **The pivot, end to end**: 8 new instructions + 2 account types + pure
+  CPMM math on-chain; 48 new tests; a devnet upgrade; three tiers of live
+  proof runs (5 distinct markets, every one drained to a zero vault);
+  concurrent-swap safety upgraded from a counter proxy to a uniqueness
+  replay audit; a full trading UI with on-chain-enforced slippage; and the
+  sealed-batch flow re-proven at every single gate along the way. Additive
+  throughout — Market layout untouched, zero sealed-flow regressions.
