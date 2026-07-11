@@ -1388,3 +1388,33 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
   on-chain, unchanged).
 - Liquid glass: the global `.card` primitive already carries the full
   treatment (tint + blur + highlight, both themes) — every panel inherits.
+
+## 2026-07-11 — v2 Phase 5: PER verdict + README repositioning + regression sweep
+
+- **`docs/PER_ANALYSIS.md`**: the private-ER question answered in writing —
+  verdict is public ER + session keys, NOT a PER. A TEE-gated validator
+  reintroduces the hardware/operator trust the custody thesis rejects (and
+  would make the replay audit impossible by construction); a prediction
+  market wants public price discovery; session keys already deliver the
+  click-free UX. What a PER would buy (private order flow, jurisdiction
+  gating) is recorded as roadmap-if-ever, with the task-8 spike's proven
+  mechanics referenced.
+- **README repositioned for v2**: session trading in the lede +
+  `demo:session` in the reproduce table, three new no-bluff entries
+  (ER revocation propagates at clone-refresh cadence — expiry is the hard
+  bound; old markets drained + archived, never deleted, residuals are the
+  owners' money; lobby ¢ prices for delegated pools are the base snapshot),
+  test count 100 → 108, repo-layout additions.
+- **Regression sweep — ALL GREEN on the session-keys binary**:
+  - `cargo test --release`: **108/108**.
+  - `bun run demo:amm`: PASS, market `A6j64xZnpP…`, lamport-exact solvency
+    at both checkpoints, vault drained to zero.
+  - `bun run demo:amm-er`: PASS, market `57dJZNT2px…`, concurrent swaps
+    serialize correctly, replay audit green, solvent end-to-end.
+  - `bun run demo:session`: PASS, market `GM27Kw36…` (one-popup
+    onboarding, popup-free 0-SOL swaps, revocation + funds-exit negatives).
+  - sealed `verify-flow.ts`: PASS (batch match + real validate_stat settle
+    + claim, live house-counter route).
+  - `tsc --noEmit` clean; browser sweep 6/6 routes 200 ( / , /markets with
+    the "Trading now" lobby, /create, /portfolio, /demo/mev, and a seeded
+    v2 market page); /api/fixtures + /api/scores probed live earlier.

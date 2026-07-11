@@ -14,6 +14,15 @@ CPI into TxLINE's own `validate_stat` program — not an admin key, not an
 off-chain resolver — and produces a receipt anyone can independently
 verify against public RPC.
 
+**One signature, then just trade.** Starting a trading session mints a
+scoped MagicBlock session key (gpl_session) in the same transaction that
+funds and delegates your position — after that every swap is **popup-free
+and gas-free** on the ER (fees validator-sponsored; the session key holds
+zero SOL and provably cannot withdraw funds — `bun run demo:session`).
+Markets are created from TxLINE's **live fixture window** with real team
+names, kickoff times, live scores/cards/corners, and bookmaker reference
+odds beside the pool price.
+
 Built for the [TxODDS World Cup Hackathon](https://superteam.fun/earn/listing/prediction-markets-and-settlement/)
 — Prediction Markets & Settlement track. Native Pinocchio (`no_std`), no
 Anchor. Devnet. This repository is the complete application: on-chain
@@ -26,6 +35,7 @@ program, Next.js frontend, and TxLINE data services.
 | **Run the app** | `cd app && bun install && bun run dev` |
 | **Reproduce the sealed lifecycle in one command** | `bun run demo` (from the repo root) |
 | **Reproduce the AMM lifecycle in one command** | `bun run demo:amm` (base layer) · `bun run demo:amm-er` (concurrent swaps on the ER + replay audit) |
+| **Reproduce session trading in one command** | `bun run demo:session` (one-signature onboarding → popup-free gas-free ER swaps → revocation + funds-exit negatives, all live) |
 
 ---
 
@@ -396,6 +406,31 @@ iteration to get right:
   twice (−0.023, −0.032 — adverse selection won), on real devnet
   transactions linked above. The UI's LP card and /create's preview both
   state this before any capital moves.
+- **Session-key revocation on the ER propagates at clone-refresh cadence,
+  not instantly.** The gpl_session SessionToken lives on the base layer;
+  the ER validates against its clone of that account, so a base-layer
+  `revoke_session` can take a clone-refresh cycle to bite on the ER. The
+  hard bound is expiry (default 4h; gpl_session caps validity at 7 days),
+  and revocation was proven live on base (`bun run demo:session` — the
+  post-revoke swap reverts with `SessionInvalid`). The session key's blast
+  radius if stolen is bounded either way: it can ONLY swap inside one
+  position — every funds-exit instruction requires the wallet.
+- **Old markets are drained and archived, not deleted.** Solana accounts
+  here have no close path (no close instruction; vaults have no close
+  authority), so "removing" the pre-v2 test markets means: every vault was
+  drained through legitimate paths (`app/scripts/retire_markets.ts` —
+  permissionless `refund_expired`/`refund_unrevealed` pay the position
+  OWNER's token account, never ours; owner-signed AMM redemptions for keys
+  this repo holds), and the lobby defaults to "Trading now" with an
+  Archive tab that still shows everything. Residual balances belonging to
+  discarded demo wallets are their money — not ours to move — and are
+  reported as such by the script.
+- **Lobby prices for ER-delegated pools are the base-layer snapshot.** The
+  market page streams live reserves from the ER; the lobby's ¢ chips read
+  each pool's base account (frozen at delegation time) — right after
+  seeding they're identical (50¢/50¢), during heavy ER trading the lobby
+  lags until the next commit. Disclosed here rather than pretending the
+  lobby is a live feed.
 - **The AMM expiry-refund path is mollusk-proven, not live-proven.** If an
   AMM market never settles (fixture never gets oracle data), `redeem_amm` /
   `withdraw_lp_amm` open a refund path after `deadline + 2h grace`:
@@ -514,7 +549,7 @@ To rebuild and redeploy the on-chain program yourself:
 ```bash
 cd programs/onyx
 cargo build-sbf
-cargo test                                      # 100 host tests, incl. real
+cargo test                                      # 108 host tests, incl. real
                                                  # mollusk-svm SBF execution
                                                  # (loads the actual compiled
                                                  # onyx.so): the fund-custody-
@@ -598,6 +633,11 @@ app/                     Next.js frontend — lobby, create, market, receipt, po
   scripts/amm_base_lifecycle.ts   AMM tier-1 proof (`bun run demo:amm`)
   scripts/amm_er_lifecycle.ts     AMM tier-2 ER concurrency proof (`bun run demo:amm-er`)
   scripts/amm_browser_proof.ts    AMM tier-3 browser-driven proof
+  scripts/session_er_proof.ts     session-key live proof (`bun run demo:session`)
+  scripts/seed_amm_markets.ts     seed ER-ready AMM markets from the live fixture window
+  scripts/retire_markets.ts       keeper-drain of pre-v2 vaults (see "no bluff")
+  src/lib/session.ts              MagicBlock gpl_session client (docs/SESSION_TRADING.md)
+  src/lib/txlineFixtures.ts       live /fixtures/snapshot window (+/api/fixtures)
 services/ingestion/      TxLINE auth/data client + devnet test harnesses
 scripts/run-demo.sh      one-command sealed demo (`bun run demo`)
 BUILD_STATE.md           full build/proof log, chronological

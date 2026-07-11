@@ -22,6 +22,10 @@
 //   flow named as the MEV-proof alternative. The LP's capital is genuinely
 //   at risk (observed live both ways in the Phase C runs) — disclosed on
 //   the LP card.
+// - Session trading (docs/SESSION_TRADING.md): "Start session" is ONE
+//   wallet signature (create_session + open + deposit + delegate); swaps
+//   are then signed by the browser-held session key — popup-free, gas-free
+//   on the ER, and the session key can never move funds out.
 
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
