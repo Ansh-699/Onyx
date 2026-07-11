@@ -1327,3 +1327,23 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
   wallet path). `docs/SESSION_TRADING.md` has the full design + disclosed
   limitation (base-layer revocation propagates at ER clone-refresh cadence;
   expiry is the hard bound).
+
+## 2026-07-11 — v2 Phase 2 COMPLETE: live TxLINE data layer — no more hardcoded fixtures
+
+- **/api/fixtures** (new): live `/fixtures/snapshot` window merged over the
+  verified static fallback table (the window rolls, aged-out fixtures keep
+  their names), 5-min server cache, per-fixture `source: live|static`
+  honesty flag. Verified live: mixed live+static entries returned.
+- **fixtureMeta.ts**: static tables renamed `*_STATIC` + a live overlay
+  (`primeLiveFixtures`) that the existing sync getters prefer — every
+  call site (lobby, market page, portfolio) resolves real, current team
+  names the moment `useLiveFixtures` loads, zero call-site rewrites.
+- **Scores extended to the full match-stat set**: statKeys 1–8 (goals,
+  yellows, reds, corners both sides) in one call with goals-only fallback;
+  LiveScore renders a cards/corners row when nonzero. Verified live
+  (18179550: 3:2, seq 1316).
+- **Reference odds finally rendered**: `useReferenceOdds` (built in
+  excellence pass A, zero consumers until now) wired into LiveScore as a
+  "bookmaker ref" row — implied 1X2 percents labeled reference-only.
+- **/create picker** now lists the live upcoming fixture window
+  (kickoff-date labels), static list as fallback.

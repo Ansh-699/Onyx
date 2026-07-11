@@ -25,10 +25,19 @@ export interface FixtureScore {
   fixtureId: number;
   p1Goals: number;
   p2Goals: number;
+  /** Full match-stat set (statKeys 3-8): cards + corners, both sides. */
+  p1Yellows: number;
+  p2Yellows: number;
+  p1Reds: number;
+  p2Reds: number;
+  p1Corners: number;
+  p2Corners: number;
   seq: number;
   fetchedAt: number;
   source: "txline" | "unavailable";
 }
+
+const EMPTY_STATS = { p1Goals: 0, p2Goals: 0, p1Yellows: 0, p2Yellows: 0, p1Reds: 0, p2Reds: 0, p1Corners: 0, p2Corners: 0 };
 
 interface StatValidationResponse {
   statsToProve: Array<{ key: number; value: number; period: number }>;
@@ -72,21 +81,30 @@ export async function getFixtureScore(fixtureId: number): Promise<FixtureScore> 
   if (cached && Date.now() - cached.fetchedAt < POLL_TTL_MS) return cached;
 
   if (!JWT || !API_TOKEN) {
-    const result: FixtureScore = { fixtureId, p1Goals: 0, p2Goals: 0, seq: 0, fetchedAt: Date.now(), source: "unavailable" };
+    const result: FixtureScore = { fixtureId, ...EMPTY_STATS, seq: 0, fetchedAt: Date.now(), source: "unavailable" };
     cache.set(fixtureId, result);
     return result;
   }
 
   try {
     const seq = await findMaxSeq(fixtureId);
-    const goals = await statValidation(fixtureId, seq, "1,2");
-    const p1 = goals?.statsToProve.find((s) => s.key === 1)?.value ?? 0;
-    const p2 = goals?.statsToProve.find((s) => s.key === 2)?.value ?? 0;
-    const result: FixtureScore = { fixtureId, p1Goals: p1, p2Goals: p2, seq, fetchedAt: Date.now(), source: "txline" };
+    // Full match-stat set in one call: goals(1,2) yellows(3,4) reds(5,6) corners(7,8).
+    // Some fixtures haven't recorded every stat — fall back to goals-only
+    // rather than losing the score because a corners key didn't resolve.
+    const stats = (await statValidation(fixtureId, seq, "1,2,3,4,5,6,7,8")) ?? (await statValidation(fixtureId, seq, "1,2"));
+    const v = (key: number) => stats?.statsToProve.find((s) => s.key === key)?.value ?? 0;
+    const result: FixtureScore = {
+      fixtureId,
+      p1Goals: v(1), p2Goals: v(2),
+      p1Yellows: v(3), p2Yellows: v(4),
+      p1Reds: v(5), p2Reds: v(6),
+      p1Corners: v(7), p2Corners: v(8),
+      seq, fetchedAt: Date.now(), source: "txline",
+    };
     cache.set(fixtureId, result);
     return result;
   } catch {
-    const result: FixtureScore = { fixtureId, p1Goals: 0, p2Goals: 0, seq: 0, fetchedAt: Date.now(), source: "unavailable" };
+    const result: FixtureScore = { fixtureId, ...EMPTY_STATS, seq: 0, fetchedAt: Date.now(), source: "unavailable" };
     cache.set(fixtureId, result);
     return result;
   }

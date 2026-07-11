@@ -230,9 +230,48 @@ export interface FixtureScore {
   fixtureId: number;
   p1Goals: number;
   p2Goals: number;
+  p1Yellows: number;
+  p2Yellows: number;
+  p1Reds: number;
+  p2Reds: number;
+  p1Corners: number;
+  p2Corners: number;
   seq: number;
   fetchedAt: number;
   source: "txline" | "unavailable";
+}
+
+export interface LiveFixture {
+  fixtureId: number;
+  participant1: string;
+  participant2: string;
+  competition: string;
+  startTimeMs: number | null;
+  source: "live" | "static";
+}
+
+/**
+ * Live fixture window from TxLINE /fixtures/snapshot (via /api/fixtures,
+ * 5-min server cache) merged over the verified static fallback — real team
+ * names and kickoff times without hand-refreshing a table.
+ */
+export function useLiveFixtures() {
+  return useQuery<LiveFixture[]>({
+    queryKey: ["fixtures"],
+    queryFn: async () => {
+      const res = await fetch("/api/fixtures", { cache: "no-store" });
+      if (!res.ok) throw new Error(`fixtures ${res.status}`);
+      return res.json();
+    },
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Index a fixture list by id for O(1) name lookups in card grids. */
+export function fixtureIndex(fixtures: LiveFixture[] | undefined): Map<number, LiveFixture> {
+  return new Map((fixtures ?? []).map((f) => [f.fixtureId, f]));
 }
 
 /**

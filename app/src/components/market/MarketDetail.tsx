@@ -7,7 +7,7 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { useRoutedMarket, useAmmPoolExists, useRoutedAmmPool } from "@/lib/hooks";
+import { useRoutedMarket, useAmmPoolExists, useRoutedAmmPool, useLiveFixtures } from "@/lib/hooks";
 import {
   STATUS_NAMES,
   OUTCOME_NAMES,
@@ -26,6 +26,7 @@ import {
   getFixtureInfo,
   fixtureDisplayName,
   getFixtureStartTimeMs,
+  primeLiveFixtures,
 } from "@/lib/fixtureMeta";
 import { LiveScore } from "@/components/LiveScore";
 import { SealedOrderPanel } from "@/components/SealedOrderPanel";
@@ -57,6 +58,9 @@ export function MarketDetail({ pda }: { pda: string }) {
   // header) is separately routed to whichever ledger holds it right now.
   const poolExists = useAmmPoolExists(pda);
   const routedPool = useRoutedAmmPool(pda);
+  // Live TxLINE fixture names for getFixtureInfo/fixtureDisplayName below.
+  const liveFixtures = useLiveFixtures();
+  primeLiveFixtures(liveFixtures.data);
 
   // The account genuinely doesn't exist on devnet.
   if (query.isSuccess && market === null) notFound();

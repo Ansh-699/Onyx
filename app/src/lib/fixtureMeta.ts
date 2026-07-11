@@ -29,7 +29,7 @@ export interface FixtureInfo {
 //  documented surface, so fixture 18179550 (Participant1Id/Participant2Id
 //  1575/1289 per /scores/snapshot) has no path to a real name right now —
 //  not unresolved from lack of trying.]
-const KNOWN_FIXTURES: Record<number, FixtureInfo> = {
+export const KNOWN_FIXTURES_STATIC: Record<number, FixtureInfo> = {
   18209181: { competition: "World Cup", participant1: "France", participant2: "Morocco" },
   18213979: { competition: "World Cup", participant1: "Norway", participant2: "England" },
   18218149: { competition: "World Cup", participant1: "Spain", participant2: "Belgium" },
@@ -39,8 +39,25 @@ const KNOWN_FIXTURES: Record<number, FixtureInfo> = {
   18182864: { competition: "Friendlies", participant1: "Australia", participant2: "Brazil" },
 };
 
+// Live overlay from TxLINE /fixtures/snapshot (via useLiveFixtures →
+// primeLiveFixtures). The sync getters below prefer it, so every existing
+// call site gets real, current team names the moment the live window loads —
+// static table stays as the fallback for aged-out fixtures.
+const LIVE_OVERLAY = new Map<number, { info: FixtureInfo; startTimeMs: number | null }>();
+
+export function primeLiveFixtures(
+  fixtures: { fixtureId: number; participant1: string; participant2: string; competition: string; startTimeMs: number | null }[] | undefined,
+): void {
+  for (const f of fixtures ?? []) {
+    LIVE_OVERLAY.set(f.fixtureId, {
+      info: { competition: f.competition, participant1: f.participant1, participant2: f.participant2 },
+      startTimeMs: f.startTimeMs,
+    });
+  }
+}
+
 export function getFixtureInfo(fixtureId: number): FixtureInfo | null {
-  return KNOWN_FIXTURES[fixtureId] ?? null;
+  return LIVE_OVERLAY.get(fixtureId)?.info ?? KNOWN_FIXTURES_STATIC[fixtureId] ?? null;
 }
 
 /** Display label for a fixture card heading — real match name when known, an honest fallback otherwise. */
@@ -56,7 +73,7 @@ export function fixtureDisplayName(fixtureId: number): string {
 // team names aged out of the /fixtures/snapshot window (see header comment)
 // -- used by the live-scores API route to tell "upcoming" from
 // "kicked off" without guessing.
-const KNOWN_START_TIMES: Record<number, number> = {
+export const KNOWN_START_TIMES_STATIC: Record<number, number> = {
   18179550: 1_782_936_000_000,
   18209181: 1_783_627_200_000,
   18213979: 1_783_803_600_000,
@@ -65,12 +82,12 @@ const KNOWN_START_TIMES: Record<number, number> = {
 };
 
 export function getFixtureStartTimeMs(fixtureId: number): number | null {
-  return KNOWN_START_TIMES[fixtureId] ?? null;
+  return LIVE_OVERLAY.get(fixtureId)?.startTimeMs ?? KNOWN_START_TIMES_STATIC[fixtureId] ?? null;
 }
 
 /** Real, currently-upcoming World Cup fixtures with known team names — for the Create page's fixture picker. */
 export function listUpcomingRealFixtures(): { fixtureId: number; info: FixtureInfo; startTimeMs: number | null }[] {
-  return Object.entries(KNOWN_FIXTURES)
+  return Object.entries(KNOWN_FIXTURES_STATIC)
     .filter(([, info]) => info.competition === "World Cup")
     .map(([id, info]) => ({ fixtureId: Number(id), info, startTimeMs: getFixtureStartTimeMs(Number(id)) }));
 }

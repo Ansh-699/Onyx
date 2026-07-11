@@ -1,12 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useReferenceOdds } from "@/lib/hooks";
 import styles from "./LiveScore.module.css";
 
 interface FixtureScore {
   fixtureId: number;
   p1Goals: number;
   p2Goals: number;
+  p1Yellows: number;
+  p2Yellows: number;
+  p1Reds: number;
+  p2Reds: number;
+  p1Corners: number;
+  p2Corners: number;
   seq: number;
   fetchedAt: number;
   source: "txline" | "unavailable";
@@ -42,6 +49,9 @@ export function LiveScore({
 }) {
   const [score, setScore] = useState<FixtureScore | null>(null);
   const [error, setError] = useState(false);
+  // Bookmaker 1X2 reference (TxLINE /odds/snapshot) — external context only,
+  // never our market's price and never settlement; hidden when unpublished.
+  const odds = useReferenceOdds(fixtureId);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +98,21 @@ export function LiveScore({
         </span>
         <span className={styles.team}>{awayLabel}</span>
       </div>
+      {score && hasStarted && score.p1Yellows + score.p2Yellows + score.p1Reds + score.p2Reds + score.p1Corners + score.p2Corners > 0 && (
+        <div className={styles.statRow}>
+          <span title="Yellow cards">🟨 {score.p1Yellows} – {score.p2Yellows}</span>
+          {(score.p1Reds > 0 || score.p2Reds > 0) && <span title="Red cards">🟥 {score.p1Reds} – {score.p2Reds}</span>}
+          <span title="Corners">⛳ {score.p1Corners} – {score.p2Corners}</span>
+        </div>
+      )}
+      {odds.data?.source === "txline" && odds.data.homePct !== null && (
+        <div className={styles.statRow} title={`Bookmaker: ${odds.data.bookmaker ?? "n/a"} — implied 1X2 probabilities from TxLINE's odds feed. Reference only; ONYX prices come from the pool.`}>
+          <span className="muted">bookmaker ref:</span>
+          <span>{homeLabel} {odds.data.homePct.toFixed(0)}%</span>
+          {odds.data.drawPct !== null && <span>draw {odds.data.drawPct.toFixed(0)}%</span>}
+          {odds.data.awayPct !== null && <span>{awayLabel} {odds.data.awayPct.toFixed(0)}%</span>}
+        </div>
+      )}
       <div className={styles.note}>
         <span className="pill">
           {error || score?.source === "unavailable"

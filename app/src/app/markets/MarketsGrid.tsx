@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useMarkets, useScore, useAmmPoolMarkets } from "@/lib/hooks";
+import { useMarkets, useScore, useAmmPoolMarkets, useLiveFixtures } from "@/lib/hooks";
 import {
   type OnChainMarket,
   STATUS_NAMES,
@@ -22,7 +22,7 @@ import {
   STATUS_REFUNDED,
 } from "@/lib/onchain";
 import { describeMarketPredicate, rawPredicateText } from "@/lib/statKeys";
-import { getFixtureInfo, fixtureDisplayName, getFixtureStartTimeMs } from "@/lib/fixtureMeta";
+import { getFixtureInfo, fixtureDisplayName, getFixtureStartTimeMs, primeLiveFixtures } from "@/lib/fixtureMeta";
 import styles from "./lobby.module.css";
 
 // ---------------------------------------------------------------------------
@@ -251,6 +251,10 @@ function SkeletonCard() {
 export function MarketsGrid() {
   const { data, isError, refetch } = useMarkets();
   const { data: ammMarkets } = useAmmPoolMarkets();
+  // Live TxLINE fixture names: priming the overlay makes every
+  // getFixtureInfo/fixtureDisplayName call below resolve real names.
+  const liveFixtures = useLiveFixtures();
+  primeLiveFixtures(liveFixtures.data);
   const now = useNow();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");

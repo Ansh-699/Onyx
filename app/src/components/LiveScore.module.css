@@ -58,3 +58,14 @@
   justify-content: space-between;
   gap: 0.75rem;
 }
+
+.statRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin: -0.4rem 0 0.8rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}

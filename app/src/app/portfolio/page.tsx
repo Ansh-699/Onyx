@@ -38,7 +38,8 @@ import {
 import { buildClaimIx } from "@/lib/instructions";
 import { friendlyError } from "@/lib/errors";
 import { describeMarketPredicate } from "@/lib/statKeys";
-import { getFixtureInfo, fixtureDisplayName } from "@/lib/fixtureMeta";
+import { getFixtureInfo, fixtureDisplayName, primeLiveFixtures } from "@/lib/fixtureMeta";
+import { useLiveFixtures } from "@/lib/hooks";
 import { WalletButton } from "@/components/WalletButton";
 import styles from "./portfolio.module.css";
 
@@ -120,6 +121,9 @@ export default function PortfolioPage() {
 
   const owner = publicKey?.toBase58() ?? null;
   const ready = mounted && connected && !!publicKey;
+  // Live TxLINE fixture names for the getFixtureInfo calls below.
+  const liveFixtures = useLiveFixtures();
+  primeLiveFixtures(liveFixtures.data);
 
   const positionsQuery = useQuery<PositionRow[]>({
     queryKey: ["positions", owner],

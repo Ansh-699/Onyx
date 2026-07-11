@@ -9,6 +9,7 @@ import { comparisonSymbol } from "@/lib/merkle";
 import { getConfigUsdcMint, explorerTxUrl, explorerAddressUrl } from "@/lib/onchain";
 import { SELECTABLE_STAT_OPTIONS, pairedStatKey, OP_ADD, OP_SUBTRACT } from "@/lib/statKeys";
 import { listUpcomingRealFixtures } from "@/lib/fixtureMeta";
+import { useLiveFixtures } from "@/lib/hooks";
 import { friendlyError } from "@/lib/errors";
 import {
   buildOpenMarketSealedIx,
@@ -39,11 +40,15 @@ const DEMO_FIXTURE = {
   defaultThreshold: 2,
 };
 
-// Real, currently-upcoming World Cup fixtures (verified live via TxLINE
-// /fixtures/snapshot, competitionId=72) -- not settleable yet (no proof
-// exists until they kick off and finish), but real fixtures with real team
-// names, same as the ones already seeded into the lobby.
-const REAL_UPCOMING_FIXTURES = listUpcomingRealFixtures();
+// Static fallback for the fixture picker — replaced by the live
+// /api/fixtures window (useLiveFixtures) as soon as it loads.
+const STATIC_UPCOMING = listUpcomingRealFixtures().map((f) => ({
+  fixtureId: f.fixtureId,
+  participant1: f.info.participant1,
+  participant2: f.info.participant2,
+  competition: f.info.competition,
+  startTimeMs: f.startTimeMs,
+}));
 
 const CMP_MAP: Record<Comparison, number> = {
   greaterThan: CMP_GREATER_THAN,
@@ -80,6 +85,14 @@ export default function CreatePage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ signature: string; market: string } | null>(null);
+
+  // Live TxLINE fixture window (real team names + kickoff times); upcoming
+  // only — a market on an already-finished fixture would settle instantly.
+  const liveFixtures = useLiveFixtures();
+  const upcomingFixtures = (
+    liveFixtures.data?.filter((f) => f.fixtureId !== DEMO_FIXTURE.fixtureId && (f.startTimeMs === null || f.startTimeMs > Date.now())) ??
+    STATIC_UPCOMING
+  );
 
   const isDemoFixture = fixtureId === DEMO_FIXTURE.fixtureId;
   const statOptions = isDemoFixture ? [{ label: "P1 goals", key: DEMO_FIXTURE.statKey }] : SELECTABLE_STAT_OPTIONS;
@@ -241,9 +254,10 @@ export default function CreatePage() {
             }}
           >
             <option value={DEMO_FIXTURE.fixtureId}>{DEMO_FIXTURE.label}</option>
-            {REAL_UPCOMING_FIXTURES.map((f) => (
+            {upcomingFixtures.map((f) => (
               <option key={f.fixtureId} value={f.fixtureId}>
-                {f.info.participant1} vs {f.info.participant2} (#{f.fixtureId}) — real fixture, not started yet, no settlement until it finishes
+                {f.participant1} vs {f.participant2} · {f.competition}
+                {f.startTimeMs ? ` · ${new Date(f.startTimeMs).toLocaleDateString()}` : ""} (#{f.fixtureId})
               </option>
             ))}
           </select>
