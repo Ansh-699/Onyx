@@ -21,8 +21,21 @@
 //! Accounts: [0] owner (S, readonly) · [1] market (read; delegated
 //!           alongside the pool so it exists on the ER, used only for the
 //!           status/deadline gate) · [2] pool (W) · [3] position (W)
+//!           · [4] session_token (read, OPTIONAL — required only when the
+//!             signer is a MagicBlock session key, not the position owner)
 //! Args: side(u8: SIDE_A|SIDE_B) direction(u8: SWAP_BUY|SWAP_SELL)
 //!       amount_in(u64 LE) min_out(u64 LE) = 18 bytes
+//!
+//! **Session signing** (docs/SESSION_TRADING.md): if the signer is NOT the
+//! position owner, it must present a live SessionToken from MagicBlock's
+//! gpl_session program binding (authority = position owner, target_program
+//! = this program, session_signer = the signer, valid_until > now). No PDA
+//! re-derivation is needed: gpl_session is the only writer of accounts it
+//! owns, `create_session` requires the authority to SIGN, and it only
+//! initializes tokens whose stored fields match their own PDA seeds — so
+//! owner + discriminator + field equality is already unforgeable. Session
+//! keys can ONLY swap; every funds-exit instruction (deposit/redeem/
+//! withdraw_lp) checks the owner directly and rejects a session signer.
 
 use pinocchio::{account_info::AccountInfo, pubkey::Pubkey, sysvars::clock::Clock, sysvars::Sysvar, ProgramResult};
 
@@ -33,6 +46,36 @@ use crate::state::amm_pool::AmmPool;
 use crate::state::amm_position::AmmPosition;
 use crate::state::market::Market;
 use crate::util::read_u64_le;
+
+/// Accept a gpl_session SessionToken as an alternative signer for swaps.
+/// Owner + discriminator + field-equality checks suffice without PDA
+/// re-derivation — see the module header for the argument.
+fn validate_session_token(token_ai: &AccountInfo, signer: &Pubkey, position_owner: &Pubkey) -> ProgramResult {
+    if !token_ai.is_owned_by(&SESSION_KEYS_PROGRAM_ID) {
+        return Err(OnyxError::SessionInvalid.into());
+    }
+    let data = token_ai.try_borrow_data()?;
+    if data.len() < SESSION_TOKEN_LEN || data[0..8] != SESSION_TOKEN_DISC {
+        return Err(OnyxError::SessionInvalid.into());
+    }
+    if data[8..40] != *position_owner {
+        // authority
+        return Err(OnyxError::SessionInvalid.into());
+    }
+    if data[40..72] != crate::ID {
+        // target_program
+        return Err(OnyxError::SessionInvalid.into());
+    }
+    if data[72..104] != *signer {
+        // session_signer
+        return Err(OnyxError::SessionInvalid.into());
+    }
+    let valid_until = i64::from_le_bytes(data[104..112].try_into().unwrap());
+    if Clock::get()?.unix_timestamp >= valid_until {
+        return Err(OnyxError::SessionInvalid.into());
+    }
+    Ok(())
+}
 
 pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> ProgramResult {
     let [owner, market_ai, pool_ai, position_ai, ..] = accounts else {
@@ -78,7 +121,10 @@ pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> P
     let mut posdata = position_ai.try_borrow_mut_data()?;
     let mut position = AmmPosition::load(&mut posdata)?;
     if &position.owner() != owner.key() {
-        return Err(OnyxError::Unauthorized.into());
+        // Not the owner: allow a live MagicBlock session key (trailing
+        // account [4]); anything else is Unauthorized.
+        let session_token = accounts.get(4).ok_or(OnyxError::Unauthorized)?;
+        validate_session_token(session_token, owner.key(), &position.owner())?;
     }
     if &position.market() != market_ai.key() {
         return Err(OnyxError::BadParams.into());
@@ -186,6 +232,8 @@ mod tests {
     use solana_rent::Rent;
 
     use crate::constants::{DISC_MARKET, IX_SWAP_AMM, SIDE_A, SIDE_B, STATUS_OPEN, SWAP_BUY, SWAP_SELL};
+
+    const SESSION_KEYS_ID: Pubkey = Pubkey::new_from_array(crate::constants::SESSION_KEYS_PROGRAM_ID);
     use crate::error::OnyxError;
     use crate::fpmm::calc_buy;
     use crate::state::amm_pool::AMM_POOL_LEN;
@@ -518,6 +566,164 @@ mod tests {
         let position_after = &resulting.iter().find(|(k, _)| *k == fx.position_key).unwrap().1.data;
         assert_eq!(read_u64(position_after, 80), 0, "tokens_a untouched");
         assert!(read_u64(position_after, 88) > 0, "tokens_b credited");
+    }
+
+    // ---- MagicBlock session-key signer path (docs/SESSION_TRADING.md) ----
+    // Fabricated SessionToken accounts owned by the gpl_session program —
+    // validation is pure account inspection, no CPI, so mollusk covers it
+    // exactly as devnet will see it. Funds-exit pins live in the other AMM
+    // instruction files: their existing *_rejects_wrong_owner tests already
+    // prove a session signer (= any non-owner) cannot deposit/redeem/
+    // withdraw_lp.
+
+    fn session_token_bytes(authority: &Pubkey, target_program: &Pubkey, session_signer: &Pubkey, valid_until: i64) -> Vec<u8> {
+        let mut b = vec![0u8; crate::constants::SESSION_TOKEN_LEN];
+        b[0..8].copy_from_slice(&crate::constants::SESSION_TOKEN_DISC);
+        b[8..40].copy_from_slice(authority.as_ref());
+        b[40..72].copy_from_slice(target_program.as_ref());
+        b[72..104].copy_from_slice(session_signer.as_ref());
+        b[104..112].copy_from_slice(&valid_until.to_le_bytes());
+        b
+    }
+
+    impl Fixture {
+        /// Owner-shaped world + a session signer as account[0] and a session
+        /// token as trailing account[4]. Pool/market params fixed to the
+        /// standard happy-path shape; the tests vary only the session bits.
+        fn run_session(
+            &mut self,
+            now: i64,
+            session_signer: &Pubkey,
+            token_data: Vec<u8>,
+            token_owner: Pubkey,
+            include_token: bool,
+            extra_checks: &[Check],
+        ) -> Vec<(Pubkey, Account)> {
+            self.mollusk.sysvars.clock = Clock { unix_timestamp: now, ..Clock::default() };
+            let owner = self.owner;
+            let lp = Pubkey::new_unique();
+            let token_key = Pubkey::new_unique();
+            let mut accounts = self.world(
+                STATUS_OPEN, 2_000_000_000, &lp, 1_000_000, 1_000_000, 1_000_000, 0, 100,
+                &owner, 500_000, 0, 0,
+            );
+            accounts.push((*session_signer, Account::new(1_000_000_000, 0, &solana_system_interface::program::ID)));
+            let rent = Rent::default();
+            accounts.push((
+                token_key,
+                Account { lamports: rent.minimum_balance(token_data.len()), data: token_data, owner: token_owner, executable: false, rent_epoch: 0 },
+            ));
+            let mut instruction = self.instruction(session_signer, SIDE_A, SWAP_BUY, 100_000, 0);
+            if include_token {
+                instruction.accounts.push(AccountMeta::new_readonly(token_key, false));
+            }
+            let result = self.mollusk.process_and_validate_instruction(&instruction, &accounts, extra_checks);
+            result.resulting_accounts
+        }
+    }
+
+    #[test]
+    fn session_signer_swaps_ok() {
+        let mut fx = setup();
+        let session = Pubkey::new_unique();
+        let owner = fx.owner;
+        let token = session_token_bytes(&owner, &PROGRAM_ID, &session, /* valid_until */ 1_500_000_000);
+        let resulting = fx.run_session(
+            /* now */ 1_000_000_000, &session, token, SESSION_KEYS_ID, true,
+            &[Check::success()],
+        );
+        let position_after = &resulting.iter().find(|(k, _)| *k == fx.position_key).unwrap().1.data;
+        assert!(read_u64(position_after, 80) > 0, "session-signed buy credited tokens_a");
+    }
+
+    #[test]
+    fn session_swap_rejects_after_expiry() {
+        let mut fx = setup();
+        let session = Pubkey::new_unique();
+        let owner = fx.owner;
+        let token = session_token_bytes(&owner, &PROGRAM_ID, &session, 1_000_000_000);
+        fx.run_session(
+            /* now == valid_until: expired (strict <) */ 1_000_000_000, &session, token, SESSION_KEYS_ID, true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::SessionInvalid as u32))],
+        );
+    }
+
+    #[test]
+    fn session_swap_rejects_wrong_session_signer() {
+        let mut fx = setup();
+        let session = Pubkey::new_unique();
+        let owner = fx.owner;
+        // Token binds a DIFFERENT ephemeral key than the tx signer.
+        let token = session_token_bytes(&owner, &PROGRAM_ID, &Pubkey::new_unique(), 1_500_000_000);
+        fx.run_session(
+            1_000_000_000, &session, token, SESSION_KEYS_ID, true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::SessionInvalid as u32))],
+        );
+    }
+
+    #[test]
+    fn session_swap_rejects_wrong_authority() {
+        let mut fx = setup();
+        let session = Pubkey::new_unique();
+        // Token authority is NOT the position owner — a session granted for
+        // someone else's position must not trade this one.
+        let token = session_token_bytes(&Pubkey::new_unique(), &PROGRAM_ID, &session, 1_500_000_000);
+        fx.run_session(
+            1_000_000_000, &session, token, SESSION_KEYS_ID, true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::SessionInvalid as u32))],
+        );
+    }
+
+    #[test]
+    fn session_swap_rejects_wrong_target_program() {
+        let mut fx = setup();
+        let session = Pubkey::new_unique();
+        let owner = fx.owner;
+        let token = session_token_bytes(&owner, &Pubkey::new_unique(), &session, 1_500_000_000);
+        fx.run_session(
+            1_000_000_000, &session, token, SESSION_KEYS_ID, true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::SessionInvalid as u32))],
+        );
+    }
+
+    #[test]
+    fn session_swap_rejects_forged_token_wrong_program_owner() {
+        let mut fx = setup();
+        let session = Pubkey::new_unique();
+        let owner = fx.owner;
+        // Byte-perfect token data, but the account is owned by an attacker
+        // program instead of gpl_session — the forgery the owner check kills.
+        let token = session_token_bytes(&owner, &PROGRAM_ID, &session, 1_500_000_000);
+        fx.run_session(
+            1_000_000_000, &session, token, Pubkey::new_from_array([9u8; 32]), true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::SessionInvalid as u32))],
+        );
+    }
+
+    #[test]
+    fn session_swap_rejects_bad_discriminator() {
+        let mut fx = setup();
+        let session = Pubkey::new_unique();
+        let owner = fx.owner;
+        let mut token = session_token_bytes(&owner, &PROGRAM_ID, &session, 1_500_000_000);
+        token[0] ^= 0xff;
+        fx.run_session(
+            1_000_000_000, &session, token, SESSION_KEYS_ID, true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::SessionInvalid as u32))],
+        );
+    }
+
+    #[test]
+    fn non_owner_without_token_stays_unauthorized() {
+        let mut fx = setup();
+        let session = Pubkey::new_unique();
+        let owner = fx.owner;
+        // No 5th account at all — the pre-session behavior is preserved.
+        let token = session_token_bytes(&owner, &PROGRAM_ID, &session, 1_500_000_000);
+        fx.run_session(
+            1_000_000_000, &session, token, SESSION_KEYS_ID, /* include_token */ false,
+            &[Check::err(SvmProgramError::Custom(OnyxError::Unauthorized as u32))],
+        );
     }
 
     #[test]

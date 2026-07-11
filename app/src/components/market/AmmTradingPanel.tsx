@@ -23,7 +23,7 @@
 //   at risk (observed live both ways in the Phase C runs) — disclosed on
 //   the LP card.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction, ComputeBudgetProgram, type Connection } from "@solana/web3.js";
@@ -40,6 +40,16 @@ import {
 } from "@/lib/onchain";
 import { invalidateDelegationStatus } from "@/lib/erRouting";
 import { useAmmPosition } from "@/lib/hooks";
+import {
+  type TradingSession,
+  loadSession,
+  createSessionKeypair,
+  saveSession,
+  clearSession,
+  sessionTokenPda,
+  buildCreateSessionIx,
+  buildRevokeSessionIx,
+} from "@/lib/session";
 import { friendlyError, classifyWrongLedger } from "@/lib/errors";
 import {
   buildOpenAmmPositionIx,
@@ -78,6 +88,7 @@ function tolToBps(input: string): number | null {
   return Math.round(n * 100);
 }
 const pct = (scaled: bigint) => `${(Number(scaled) / 10_000).toFixed(1)}%`;
+const CLUSTER = "devnet";
 
 export function AmmTradingPanel({
   market,
@@ -105,6 +116,13 @@ export function AmmTradingPanel({
   const [direction, setDirection] = useState<number>(SWAP_BUY);
   const [amountStr, setAmountStr] = useState("0.5");
   const [tolStr, setTolStr] = useState("1.0");
+  // Trading session (MagicBlock session keys): ephemeral browser key that
+  // signs ER swaps popup-free; the wallet signed one create_session tx to
+  // scope it. Loaded per wallet; null = no live session.
+  const [session, setSession] = useState<TradingSession | null>(null);
+  useEffect(() => {
+    setSession(publicKey ? loadSession(CLUSTER, publicKey) : null);
+  }, [publicKey]);
 
   const settled = market.status === STATUS_SETTLED || market.status === STATUS_CLAIMED;
   const deadlinePassed = Math.floor(Date.now() / 1000) >= Number(market.deadline);
@@ -165,6 +183,20 @@ export function AmmTradingPanel({
     return sig;
   }
 
+  // Popup-free path: the session keypair signs locally — no wallet call at
+  // all. ER-only (ER fees are validator-sponsored, so the session key needs
+  // zero SOL; on base a fee payer must burn real lamports).
+  async function sendViaSession(conn: Connection, tx: Transaction, s: TradingSession): Promise<string> {
+    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = s.keypair.publicKey;
+    tx.sign(s.keypair);
+    const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+    const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+    if (conf.value.err) throw new Error(`Transaction ${sig} failed: ${JSON.stringify(conf.value.err)}`);
+    return sig;
+  }
+
   async function refreshAll() {
     invalidateDelegationStatus(ammPoolPda(marketPk));
     invalidateDelegationStatus(marketPk);
@@ -209,23 +241,95 @@ export function AmmTradingPanel({
     });
   }
 
+  // "Start trading session" — ONE wallet popup for everything: faucet
+  // top-up, then a single tx that mints the MagicBlock SessionToken, opens
+  // + funds the position, and delegates it (plus market+pool if this market
+  // isn't on the ER yet). After this, every swap is popup-free.
+  async function onStartSession() {
+    const amount = toBase(depositUsdc);
+    if (!amount || !publicKey || !signTransaction) return;
+    await withGuard("Getting devnet test-USDC…", async () => {
+      const usdcMint = await getConfigUsdcMint();
+      if (!usdcMint) throw new Error("config not initialized on devnet yet");
+      const faucetRes = await fetch("/api/faucet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: publicKey.toBase58() }),
+      });
+      const faucetBody = await faucetRes.json();
+      if (!faucetRes.ok || !faucetBody.ok) throw new Error(`devnet faucet failed: ${faucetBody.error ?? faucetRes.status}`);
+
+      setBusy("Starting session (one signature)…");
+      const fresh = createSessionKeypair();
+      const ixs = [
+        buildCreateSessionIx({ authority: publicKey, sessionSigner: fresh.keypair.publicKey, validUntil: fresh.expiry }),
+      ];
+      if (!position) ixs.push(buildOpenAmmPositionIx({ owner: publicKey, market: marketPk }).ix);
+      ixs.push(buildDepositAmmIx({ owner: publicKey, market: marketPk, amount, usdcMint }));
+      if (!isDelegated) {
+        ixs.push(buildDelegateMarketIx({ payer: publicKey, market: marketPk }));
+        ixs.push(buildDelegateAmmPoolIx({ payer: publicKey, market: marketPk }));
+      }
+      ixs.push(buildDelegateAmmPositionIx({ payer: publicKey, market: marketPk, owner: publicKey }));
+      const tx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }), ...ixs);
+      // Two signers: the wallet (fee payer + session authority) and the
+      // ephemeral key (gpl_session requires the session_signer to co-sign).
+      const { blockhash, lastValidBlockHeight } = await getConnection().getLatestBlockhash("confirmed");
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+      tx.partialSign(fresh.keypair);
+      const signed = await signTransaction(tx);
+      const sig = await getConnection().sendRawTransaction(signed.serialize(), { skipPreflight: true });
+      const conf = await getConnection().confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+      if (conf.value.err) throw new Error(`Transaction ${sig} failed: ${JSON.stringify(conf.value.err)}`);
+      setLog((prev) => [{ label: "start session (create+deposit+delegate)", sig, ms: 0 }, ...prev].slice(0, 8));
+      // Persist only after confirmation — an unconfirmed key is garbage.
+      saveSession(CLUSTER, publicKey, fresh);
+      setSession(fresh);
+    });
+  }
+
+  async function onEndSession() {
+    if (!publicKey || !session) return;
+    await withGuard("Ending session…", async () => {
+      const ix = buildRevokeSessionIx({ authority: publicKey, sessionSigner: session.keypair.publicKey });
+      await timed("revoke_session", () => sendVia(getConnection(), new Transaction().add(ix)));
+      clearSession(CLUSTER, publicKey);
+      setSession(null);
+    });
+  }
+
   async function onSwap(e: React.FormEvent) {
     e.preventDefault();
     if (!publicKey || !amountIn || !quote) return;
+    // Session path: ER-delegated + live session = popup-free, signed by the
+    // browser-held session key with the SessionToken proving its scope.
+    const useSession = isDelegated && session !== null && session.expiry * 1000 > Date.now();
     const dirWord = direction === SWAP_BUY ? "Buying" : "Selling";
-    await withGuard(`${dirWord} on ${isDelegated ? "the Ephemeral Rollup" : "base devnet"}…`, async () => {
-      const ix = buildSwapAmmIx({
-        owner: publicKey,
-        market: marketPk,
-        side,
-        direction,
-        amountIn,
-        minOut: quote.minOut, // the quote's min-received — enforced on-chain (6026 if beaten)
-      });
-      await timed(`swap_amm (${direction === SWAP_BUY ? "buy" : "sell"} ${side === SIDE_A ? "A" : "B"})`, () =>
-        sendVia(connection, new Transaction().add(ix)),
-      );
-    });
+    await withGuard(
+      `${dirWord} on ${isDelegated ? "the Ephemeral Rollup" : "base devnet"}${useSession ? " (session-signed, no popup)" : ""}…`,
+      async () => {
+        const ix = buildSwapAmmIx({
+          owner: publicKey,
+          market: marketPk,
+          side,
+          direction,
+          amountIn,
+          minOut: quote.minOut, // the quote's min-received — enforced on-chain (6026 if beaten)
+          ...(useSession
+            ? {
+                sessionSigner: session.keypair.publicKey,
+                sessionToken: sessionTokenPda(session.keypair.publicKey, publicKey),
+              }
+            : {}),
+        });
+        await timed(`swap_amm (${direction === SWAP_BUY ? "buy" : "sell"} ${side === SIDE_A ? "A" : "B"})`, () =>
+          useSession
+            ? sendViaSession(connection, new Transaction().add(ix), session)
+            : sendVia(connection, new Transaction().add(ix)),
+        );
+      },
+    );
   }
 
   async function onAccelerate() {
@@ -338,22 +442,46 @@ export function AmmTradingPanel({
       {connected && tradingOpen && (!position || position.usdcAvailable === 0n) && (position?.tokensA ?? 0n) === 0n && (position?.tokensB ?? 0n) === 0n && (
         <div className={styles.step}>
           <div className={styles.stepHead}>
-            <span className={styles.stepNum}>1</span> Deposit to start trading
+            <span className={styles.stepNum}>1</span> Start a trading session
           </div>
+          <p className={styles.blurb}>
+            One signature: funds your position AND mints a scoped MagicBlock session key — every trade after this
+            is instant, popup-free, and gas-free on the Ephemeral Rollup. The session key can only swap; it can
+            never withdraw your funds. Expires in 4h or when you end it.
+          </p>
           <div className={styles.fields}>
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Deposit (test-USDC)</span>
               <input value={depositUsdc} onChange={(e) => setDepositUsdc(e.target.value)} inputMode="decimal" placeholder="2" data-testid="amm-deposit-input" />
             </label>
           </div>
-          <button className="button" type="button" onClick={onDeposit} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-deposit-btn">
-            {busy ? (
-              <>
-                <span className={styles.spinner} aria-hidden /> {busy}
-              </>
-            ) : (
-              "Get test-USDC & deposit"
-            )}
+          <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+            <button className="button" type="button" onClick={onStartSession} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-session-btn">
+              {busy ? (
+                <>
+                  <span className={styles.spinner} aria-hidden /> {busy}
+                </>
+              ) : (
+                "Start session (1 signature)"
+              )}
+            </button>
+            <button className="button" data-variant="ghost" type="button" onClick={onDeposit} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-deposit-btn">
+              Deposit only (sign each trade)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* session status chip */}
+      {connected && session && tradingOpen && (
+        <div className={styles.availRow} data-testid="amm-session-chip">
+          <span>
+            <span aria-hidden style={{ background: "var(--green)", display: "inline-block", width: 7, height: 7, borderRadius: "50%", marginRight: 6 }} />
+            Session active · expires {new Date(session.expiry * 1000).toLocaleTimeString()} · trades are popup-free
+            {isDelegated ? "" : " once this market is on the ER"}
+          </span>
+          <button type="button" className="button" data-variant="ghost" style={{ padding: "2px 10px", fontSize: "0.75rem" }} onClick={onEndSession} disabled={!!busy}>
+            End session
           </button>
         </div>
       )}

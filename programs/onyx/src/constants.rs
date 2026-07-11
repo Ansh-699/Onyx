@@ -146,6 +146,18 @@ pub const CREATE_PERMISSION_DISC: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
 // Member.flags bit (access_control::structs::member — AUTHORITY_FLAG).
 pub const PERMISSION_AUTHORITY_FLAG: u8 = 1;
 
+// ---- MagicBlock Session Keys (gpl_session) ----
+// Session-keys program: swap_amm accepts its SessionToken as a scoped,
+// expiring alternative signer (docs/SESSION_TRADING.md). Layout verified
+// against magicblock-labs/session-keys programs/gpl_session/src/lib.rs.
+pub const SESSION_KEYS_PROGRAM_ID: Pubkey =
+    pinocchio_pubkey::from_str("KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5");
+/// Anchor account discriminator: sha256("account:SessionToken")[..8].
+pub const SESSION_TOKEN_DISC: [u8; 8] = [233, 4, 115, 14, 46, 21, 1, 15];
+/// SessionToken byte offsets (after the 8-byte discriminator):
+/// authority@8, target_program@40, session_signer@72, valid_until i64@104.
+pub const SESSION_TOKEN_LEN: usize = 112;
+
 // ---- txoracle validate_stat CPI ----
 /// Anchor discriminator for `validate_stat` (verified in txoracle.json).
 pub const VALIDATE_STAT_DISC: [u8; 8] = [107, 197, 232, 90, 191, 136, 105, 185];

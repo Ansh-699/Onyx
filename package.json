@@ -14,7 +14,8 @@
     "typecheck": "bunx tsc --noEmit",
     "demo": "bash scripts/run-demo.sh",
     "demo:amm": "cd app && bun scripts/amm_base_lifecycle.ts",
-    "demo:amm-er": "cd app && bun scripts/amm_er_lifecycle.ts"
+    "demo:amm-er": "cd app && bun scripts/amm_er_lifecycle.ts",
+    "demo:session": "cd app && bun scripts/session_er_proof.ts"
   },
   "engines": {
     "bun": ">=1.3.0"

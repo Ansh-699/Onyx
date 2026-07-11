@@ -57,6 +57,10 @@ pub enum OnyxError {
     AlreadyRedeemed = 6030,
     /// withdraw_lp_amm called twice, or by a non-lp_owner signer.
     LpAlreadyWithdrawn = 6031,
+    /// swap_amm signed by a non-owner whose MagicBlock session token is
+    /// missing, forged, expired, or bound to a different signer/authority/
+    /// program.
+    SessionInvalid = 6032,
     // ---- ONYX-internal (non-spec) codes, 7xxx range ----
     /// A supplied account did not match its expected PDA derivation.
     InvalidPda = 7000,

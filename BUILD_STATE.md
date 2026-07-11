@@ -1285,3 +1285,45 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
   past expiry, the LP card's withdraw opens on settled OR expired,
   /portfolio shows a "Refundable (expired)" pill, and the 6029 error text
   names the grace path. Design doc §3 flipped to "SHIPPED, mollusk-proven".
+
+## 2026-07-11 — v2 Phase 1 COMPLETE: MagicBlock session keys — one popup, then popup-free gas-free ER trading
+
+- **The UX problem**: every swap cost a wallet popup, even on the ER. Fixed
+  with MagicBlock's session-keys program (`gpl_session`,
+  `KeyspM2ssCJbqUhQ4k7sveSiY4WjnYsrXkC8oDbwde5` — live on devnet, verified):
+  one wallet signature mints a SessionToken binding (wallet, ONYX, ephemeral
+  browser key, expiry ≤ 7d, ours defaults 4h); the ephemeral key then signs
+  swaps silently. NO wallet auto-approve anywhere — the wallet's one
+  signature is a real, scoped, on-chain grant.
+- **Program**: `swap_amm` accepts the session key as an alternative signer —
+  non-owner signer must present the SessionToken as trailing account [4];
+  native validation (their crate is Anchor-only): account owner ==
+  gpl_session + Anchor discriminator + authority == position owner +
+  target_program == ONYX + session_signer == signer + valid_until > now. No
+  PDA re-derivation needed (gpl_session only initializes tokens whose fields
+  match their own seeds, and create_session requires the authority to sign —
+  owner+fields is unforgeable). New error 6032 SessionInvalid.
+  **Scope invariant: a session key can ONLY swap** — deposit/redeem/
+  withdraw_lp keep their direct owner checks.
+- **Tests 100 → 108**: session swap ok; expired/wrong-signer/wrong-authority/
+  wrong-target/forged-owner/bad-discriminator all → 6032; non-owner without
+  token still 6012 (pre-session behavior preserved). Deployed
+  (`2ECHFEf19cnAjz1dQXpoMdrFXXzVZLaZ75UJBNKxLq1AyduZqQM8cW2DZkmJX2Ma...`).
+- **LIVE devnet proof** (`bun run demo:session`, market
+  `GM27Kw36GMntR4ShjShqiJjUNtKAGzo8qkyZDwSaiPQi`):
+  - ONE-SIGNATURE onboarding tx: create_session + open_amm_position +
+    deposit_amm + delegate market/pool/position
+    (`XNTzU6FN7PwzV5CkmaQi71uXv3azLDkBvTbzhdWLeTmiQTa3eGsERxByXYoSmEETb...`).
+  - 3 swaps on the ER signed ONLY by the session key with **0 SOL ever**
+    (balance asserted zero) — validator-sponsored, 510–2267ms.
+  - Live negatives: stranger swap → 6012; session key redeem_amm → 6012
+    (funds-exit pin); post-revoke session swap → 6032.
+  - Settle (live TxLINE proof) + redeem + LP withdraw → vault EXACTLY zero.
+- **Client**: `lib/session.ts` (localStorage ephemeral key + hand-built
+  create/revoke_session ixs — skipped their React SDK, 2 ixs don't justify a
+  dependency), `buildSwapAmmIx` sessionSigner/sessionToken params (position
+  PDA stays wallet-derived), AmmTradingPanel "Start session (1 signature)" /
+  session chip / End session / popup-free swap path (ER-only; base keeps the
+  wallet path). `docs/SESSION_TRADING.md` has the full design + disclosed
+  limitation (base-layer revocation propagates at ER clone-refresh cadence;
+  expiry is the hard bound).

@@ -892,15 +892,26 @@ export function buildSwapAmmIx(params: {
   direction: number; // SWAP_BUY | SWAP_SELL
   amountIn: bigint;
   minOut: bigint;
+  /** Session signing: the ephemeral key that signs INSTEAD of the wallet.
+   *  The position PDA stays derived from `owner` (the wallet) — deriving it
+   *  from the session key would target a nonexistent position. */
+  sessionSigner?: PublicKey;
+  sessionToken?: PublicKey;
 }): TransactionInstruction {
+  const signer = params.sessionSigner ?? params.owner;
+  const keys = [
+    { pubkey: signer, isSigner: true, isWritable: false },
+    { pubkey: params.market, isSigner: false, isWritable: false },
+    { pubkey: ammPoolPda(params.market), isSigner: false, isWritable: true },
+    { pubkey: ammPositionPda(params.market, params.owner), isSigner: false, isWritable: true },
+  ];
+  if (params.sessionSigner) {
+    if (!params.sessionToken) throw new Error("sessionSigner requires sessionToken");
+    keys.push({ pubkey: params.sessionToken, isSigner: false, isWritable: false });
+  }
   return new TransactionInstruction({
     programId: ONYX_PROGRAM_ID,
-    keys: [
-      { pubkey: params.owner, isSigner: true, isWritable: false },
-      { pubkey: params.market, isSigner: false, isWritable: false },
-      { pubkey: ammPoolPda(params.market), isSigner: false, isWritable: true },
-      { pubkey: ammPositionPda(params.market, params.owner), isSigner: false, isWritable: true },
-    ],
+    keys,
     data: Buffer.concat([
       Buffer.from([IX_SWAP_AMM, params.side, params.direction]),
       u64le(params.amountIn),
