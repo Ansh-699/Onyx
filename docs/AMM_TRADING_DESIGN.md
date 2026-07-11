@@ -228,7 +228,7 @@ New base-layer instructions after undelegate+settle:
   callable pre-settlement for the `usdc_available` leg only (park-and-leave
   is never trapped; I-NoTrap discipline).
 - `withdraw_lp_amm`: `reserve_winning + fees_accrued` → `lp_owner`, zero
-  the pool. Settled-only.
+  the pool. Opens on settlement OR expiry (below).
 - If the market never settles: the existing `refund_expired` philosophy
   applies — deadline+grace refund path for AMM positions (`usdc_available`
   plus complete-set value of min(tokens_a, tokens_b), with unpaired tokens
@@ -236,12 +236,16 @@ New base-layer instructions after undelegate+settle:
   wrong (manipulable); v1 honest rule: unresolved-market refund pays
   `usdc_available + min(tokens_a, tokens_b)` (the riskless complete-set
   component); the directional residual is the position's genuine risk. LP
-  refund symmetric: `min(reserve_a, reserve_b)` + fees. **Status: designed,
-  NOT implemented in v1** — deposits are redeemable anytime via redeem_amm
-  (no trap), but outcome-token complete-set value and the LP seed on a
-  market whose fixture never gets oracle data have no recovery path yet.
-  Mitigated in practice by permissionless settlement + the live any-fixture
-  proof pipeline; roadmap item, honestly labeled.
+  refund symmetric: `min(reserve_a, reserve_b)` + fees. **Status: SHIPPED,
+  mollusk-proven** — built into `redeem_amm`/`withdraw_lp_amm` behind the
+  same `redeemed`/`lp_withdrawn` guards, gated on
+  `now > deadline + SETTLE_GRACE` (2h). No market-status flip is needed:
+  `min ≤ winning-side` always, so an expiry refund pays ≤ that account's
+  settlement payout and a late permissionless settle after partial refunds
+  stays solvent by construction. Proven in mollusk with a warped Clock
+  (live proof would need a real 2h+ wait — same disclosed precedent as
+  `refund_expired`), including a full lifecycle scenario asserting the
+  vault lands on the EXACT directional-residual dust, not zero.
 
 ## 4. Account & instruction surface (additive; discs 29–36, account discs 6–7)
 

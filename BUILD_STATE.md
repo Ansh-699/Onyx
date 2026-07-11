@@ -1246,3 +1246,42 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
   replay audit; a full trading UI with on-chain-enforced slippage; and the
   sealed-batch flow re-proven at every single gate along the way. Additive
   throughout — Market layout untouched, zero sealed-flow regressions.
+
+## 2026-07-11 — AMM expiry refund SHIPPED: the last custody gap closed (no funds can ever be trapped, period)
+
+- **The gap**: on an AMM market whose fixture never gets oracle data,
+  outcome-token complete-set value and the LP seed had no recovery path
+  (design doc §3 was honest about it: "designed, NOT implemented in v1").
+- **The fix, additively inside the existing instructions** (no new discs,
+  no market-status flip): `redeem_amm` and `withdraw_lp_amm` now open after
+  `deadline + SETTLE_GRACE` (2h, existing constant) on an unsettled market.
+  Position refund = `usdc_available + min(tokens_a, tokens_b)`; LP payout =
+  `min(reserve_a, reserve_b) + fees_accrued`. The directional residual
+  (`|ta−tb|` / `|ra−rb|`) is each party's genuine risk and dies unpaid —
+  refunding it at 0.5 would be manipulable (design doc §3's own reasoning).
+- **Why no status flip is needed** (unlike `refund_expired`): `min ≤
+  winning-side` always, so every expiry refund pays ≤ that same account's
+  settlement payout — a late permissionless settle landing after partial
+  refunds stays solvent by construction, and both paths zero balances
+  behind the same `redeemed`/`lp_withdrawn` guards.
+- **Tests: 92 → 100, all green** (`cargo test --release`). New: expiry
+  pays exactly / grace-boundary strictness (`>` not `≥`) / expired
+  double-refund + refund-then-late-settle both hit the same guards / LP
+  expired variants / and lifecycle scenario 3 — swaps, NO settle, warp
+  Clock past grace, refund everyone — asserting each payout to the lamport
+  and the vault landing on the EXACT computed directional residual
+  (non-zero by design; the settled scenarios still drain to exactly zero).
+- **Deployed to devnet** (upgrade
+  `2kdcBYwji4S8u5r9Q1hQFcCd9ppavRBgQkLfZ2KqwftuYNz9crKPrrdckUBBXgGzpFNkTKJH3bYVjXCfYeTR7x9A`,
+  226,848 B < 232,448 B programdata, no extend needed). **Post-deploy live
+  regression green on the upgraded binary**: full `demo:amm` lifecycle
+  (market `EqJhZ5NpTzz6euWuRNByPsVhryWV4MabBMUZ6vDM6vDw`, vault drained to
+  exactly zero, incl. the live slippage revert) + full sealed verify-flow
+  (market `BXPeFxCPtDusykMQ6oBhmHAfeHNPzZqKZ38MoR67Gh57`). The expiry path
+  itself is mollusk-proven with a warped Clock — a live proof needs a real
+  2h+ wait; same disclosed precedent as `refund_expired` (README updated).
+- **UI mirrors the gate** (`SETTLE_GRACE_SEC` in onchain.ts): the trade
+  panel's position card shows "Refundable now" with the residual-loss copy
+  past expiry, the LP card's withdraw opens on settled OR expired,
+  /portfolio shows a "Refundable (expired)" pill, and the 6029 error text
+  names the grace path. Design doc §3 flipped to "SHIPPED, mollusk-proven".

@@ -20,6 +20,7 @@ import {
   STATUS_SETTLED,
   STATUS_CLAIMED,
   OUTCOME_SIDE_A,
+  SETTLE_GRACE_SEC,
   ORDER_STATUS_NAMES,
   TRADING_STATUS_NAMES,
   TRADING_STATUS_LOCKED,
@@ -258,6 +259,9 @@ export default function PortfolioPage() {
   }
 
   const rows = positionsQuery.data;
+  const totalStaked = rows ? rows.reduce((acc, r) => acc + r.position.amount, 0n) : 0n;
+  const openCount = rows ? rows.filter((r) => positionState(r.position, r.market) === "open").length : 0;
+  const claimableCount = rows ? rows.filter((r) => positionState(r.position, r.market) === "claimable").length : 0;
   const orders = ordersQuery.data;
   const pendingOrders = orders?.filter((o) => o.status === 0 || o.status === 1);
   const receiptMarkets = rows
@@ -279,6 +283,25 @@ export default function PortfolioPage() {
   return (
     <>
       {header}
+
+      {rows && rows.length > 0 && (
+        <div className={`card ${styles.summary}`}>
+          <div className={styles.summaryStat}>
+            <span className={styles.summaryValue}>{openCount}</span>
+            <span className={styles.summaryLabel}>Open positions</span>
+          </div>
+          <div className={styles.summaryStat}>
+            <span className={styles.summaryValue} data-tone={claimableCount > 0 ? "green" : undefined}>
+              {claimableCount}
+            </span>
+            <span className={styles.summaryLabel}>Claimable now</span>
+          </div>
+          <div className={styles.summaryStat}>
+            <span className={styles.summaryValue}>{fmtUsdc(totalStaked)}</span>
+            <span className={styles.summaryLabel}>Total staked (test-USDC)</span>
+          </div>
+        </div>
+      )}
 
       {/* ---- Fast trading (Ephemeral Rollup) — shown first: this is the
           default trading flow everywhere else in the app. ---- */}
@@ -345,8 +368,12 @@ export default function PortfolioPage() {
           <div className={styles.rows}>
             {ammPositionsQuery.data.map(({ position: p, market: m }) => {
               const settled = !!m && (m.status === STATUS_SETTLED || m.status === STATUS_CLAIMED);
+              // Program-mirrored expiry gate: never-settled market past deadline + grace
+              // refunds deposits + min(both token sides); directional residual is lost.
+              const expired = !!m && !settled && Math.floor(Date.now() / 1000) > Number(m.deadline) + SETTLE_GRACE_SEC;
               const winning = settled ? (m!.outcome === OUTCOME_SIDE_A ? p.tokensA : p.tokensB) : 0n;
-              const redeemable = p.usdcAvailable + (settled && !p.redeemed ? winning : 0n);
+              const setTokens = p.tokensA < p.tokensB ? p.tokensA : p.tokensB;
+              const redeemable = p.usdcAvailable + (p.redeemed ? 0n : settled ? winning : expired ? setTokens : 0n);
               return (
                 <div key={p.pda} className={`card ${styles.row}`}>
                   <div className={styles.rowMain}>
@@ -363,8 +390,8 @@ export default function PortfolioPage() {
                     </div>
                   </div>
                   <div className={styles.rowMeta}>
-                    <span className="pill" data-tone={settled ? "green" : "accent"}>
-                      {p.redeemed ? "Redeemed" : settled ? "Redeemable" : m ? (STATUS_NAMES[m.status] ?? "Open") : "Open"}
+                    <span className="pill" data-tone={settled ? "green" : expired ? "amber" : "accent"}>
+                      {p.redeemed ? "Redeemed" : settled ? "Redeemable" : expired ? "Refundable (expired)" : m ? (STATUS_NAMES[m.status] ?? "Open") : "Open"}
                     </span>
                     {!p.redeemed && redeemable > 0n && (
                       <Link href={`/market/${p.market}`} className="button" data-variant="ghost">

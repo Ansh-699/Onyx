@@ -396,6 +396,18 @@ iteration to get right:
   twice (−0.023, −0.032 — adverse selection won), on real devnet
   transactions linked above. The UI's LP card and /create's preview both
   state this before any capital moves.
+- **The AMM expiry-refund path is mollusk-proven, not live-proven.** If an
+  AMM market never settles (fixture never gets oracle data), `redeem_amm` /
+  `withdraw_lp_amm` open a refund path after `deadline + 2h grace`:
+  positions get deposits + the complete-set value `min(tokens_a, tokens_b)`,
+  the LP gets `min(reserves) + fees` — the directional residual is each
+  party's genuine risk and stays in the vault as unclaimable dust. Proving
+  this live would mean parking real devnet state for 2+ hours, so it's
+  proven the same way `refund_expired` is: real SBF execution under
+  mollusk-svm with a warped Clock sysvar, including a full-lifecycle test
+  that asserts every refund to the lamport and the vault landing on the
+  exact computed residual. The settled paths around it (same instructions,
+  same guards) are live-proven in the tables above.
 - **AMM markets are not MEV-proof, and the panel says so.** Continuous
   pricing is front-runnable in principle — ordering belongs to the
   sequencer (the ER's today, the base leader otherwise). The user's
@@ -502,7 +514,7 @@ To rebuild and redeploy the on-chain program yourself:
 ```bash
 cd programs/onyx
 cargo build-sbf
-cargo test                                      # 92 host tests, incl. real
+cargo test                                      # 100 host tests, incl. real
                                                  # mollusk-svm SBF execution
                                                  # (loads the actual compiled
                                                  # onyx.so): the fund-custody-
@@ -513,13 +525,16 @@ cargo test                                      # 92 host tests, incl. real
                                                  # the full AMM surface --
                                                  # CPMM math properties,
                                                  # swap/redeem/LP-withdraw
-                                                 # units, and two
+                                                 # units, and three
                                                  # adversarially-ordered
                                                  # end-to-end lifecycles
                                                  # asserting the solvency
-                                                 # identity after every step
-                                                 # and a to-the-lamport-zero
-                                                 # vault post-settlement
+                                                 # identity after every step:
+                                                 # two settled (vault drains
+                                                 # to lamport-exact ZERO) and
+                                                 # one expiry unwind (vault
+                                                 # lands on the EXACT
+                                                 # directional residual)
 solana program deploy target/deploy/onyx.so \
   --program-id 4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB \
   --url https://api.devnet.solana.com

@@ -11,6 +11,14 @@
 //! both reserves and fees_accrued, sets `lp_withdrawn` to guard a repeat
 //! call.
 //!
+//! Expiry (docs/AMM_TRADING_DESIGN.md §3): if the market never settles by
+//! `deadline + SETTLE_GRACE`, the gate opens anyway and the payout is
+//! `min(reserve_a, reserve_b) + fees_accrued` — the pool's riskless
+//! complete-set component; the directional residual dies unpaid. No
+//! market-status flip: `min(ra,rb) <= r_winning`, so an expiry withdrawal
+//! pays <= what settlement would, and a late settle after an expiry
+//! withdrawal stays solvent behind the same `lp_withdrawn` guard.
+//!
 //! Accounts: [0] lp_owner (S) · [1] market (read) · [2] pool (W)
 //!           · [3] vault (W) · [4] lp_owner_usdc_ata (W) · [5] token program
 //!
@@ -22,6 +30,7 @@ use pinocchio::{
     account_info::AccountInfo,
     instruction::{Seed, Signer},
     pubkey::{find_program_address, Pubkey},
+    sysvars::{clock::Clock, Sysvar},
     ProgramResult,
 };
 use pinocchio_token::instructions::Transfer;
@@ -43,13 +52,16 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> P
         return Err(OnyxError::InvalidOwner.into());
     }
 
-    let (market_status, outcome, vault_bump) = {
+    let (market_status, outcome, deadline, vault_bump) = {
         let mut mdata = market_ai.try_borrow_mut_data()?;
         let market = Market::load(&mut mdata)?;
-        (market.status(), market.outcome(), market.vault_bump())
+        (market.status(), market.outcome(), market.deadline(), market.vault_bump())
     };
     let settled = market_status == STATUS_SETTLED || market_status == STATUS_CLAIMED;
-    if !settled {
+    let expired =
+        !settled && Clock::get()?.unix_timestamp > deadline.saturating_add(SETTLE_GRACE);
+    // NotSettled here means "neither settled nor past deadline+grace".
+    if !settled && !expired {
         return Err(OnyxError::NotSettled.into());
     }
 
@@ -65,9 +77,14 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> P
         return Err(OnyxError::LpAlreadyWithdrawn.into());
     }
 
-    let winning_side = if outcome == OUTCOME_SIDE_A { SIDE_A } else { SIDE_B };
-    let reserve_winning = if winning_side == SIDE_A { pool.reserve_a() } else { pool.reserve_b() };
-    let payout = reserve_winning.checked_add(pool.fees_accrued()).ok_or(OnyxError::ArithmeticOverflow)?;
+    let reserve_payable = if settled {
+        let winning_side = if outcome == OUTCOME_SIDE_A { SIDE_A } else { SIDE_B };
+        if winning_side == SIDE_A { pool.reserve_a() } else { pool.reserve_b() }
+    } else {
+        // Expiry: riskless complete-set component only.
+        pool.reserve_a().min(pool.reserve_b())
+    };
+    let payout = reserve_payable.checked_add(pool.fees_accrued()).ok_or(OnyxError::ArithmeticOverflow)?;
 
     if payout == 0 {
         return Err(OnyxError::NothingToRefund.into());
@@ -123,7 +140,12 @@ mod tests {
     use solana_rent::Rent;
     use spl_token_interface::state::{Account as TokenAccountState, AccountState};
 
-    use crate::constants::{DISC_MARKET, IX_WITHDRAW_LP_AMM, OUTCOME_SIDE_A, OUTCOME_SIDE_B, STATUS_OPEN, STATUS_SETTLED};
+    use solana_clock::Clock;
+
+    use crate::constants::{
+        DISC_MARKET, IX_WITHDRAW_LP_AMM, OUTCOME_SIDE_A, OUTCOME_SIDE_B, SETTLE_GRACE, STATUS_OPEN,
+        STATUS_SETTLED,
+    };
     use crate::error::OnyxError;
     use crate::state::amm_pool::AMM_POOL_LEN;
     use crate::state::market::MARKET_LEN;
@@ -371,6 +393,61 @@ mod tests {
             &market, &lp, PROGRAM_ID,
             STATUS_SETTLED, OUTCOME_SIDE_A, 1_500_000, 700_000, 20_000, false,
             &[Check::err(SvmProgramError::Custom(OnyxError::VaultUnderfunded as u32))],
+        );
+    }
+
+    // Expiry tests: fixture markets have deadline = 0, so warping the clock
+    // past SETTLE_GRACE is the expiry condition (refund_expired.rs pattern).
+
+    #[test]
+    fn withdraw_lp_expired_pays_min_reserve_plus_fees() {
+        let mut fx = setup();
+        fx.mollusk.sysvars.clock = Clock { unix_timestamp: SETTLE_GRACE + 10, ..Clock::default() };
+        let lp = fx.lp_owner;
+        let market = fx.market_key;
+        let resulting = fx.run(
+            &market, &lp, PROGRAM_ID,
+            STATUS_OPEN, 0, /* reserve_a */ 1_500_000, /* reserve_b */ 700_000, /* fees */ 20_000,
+            false,
+            &[Check::success()],
+        );
+        let ata_after = resulting.iter().find(|(k, _)| *k == fx.lp_owner_ata).unwrap();
+        assert_eq!(
+            TokenAccountState::unpack(&ata_after.1.data).unwrap().amount,
+            720_000,
+            "min(reserves) + fees; the 800k directional residual dies"
+        );
+        let pool_after = resulting.iter().find(|(k, _)| *k == fx.pool_key).unwrap();
+        assert_eq!(&pool_after.1.data[72..80], &0u64.to_le_bytes(), "reserve_a zeroed");
+        assert_eq!(&pool_after.1.data[80..88], &0u64.to_le_bytes(), "reserve_b zeroed");
+        assert_eq!(&pool_after.1.data[96..104], &0u64.to_le_bytes(), "fees zeroed");
+        assert_eq!(pool_after.1.data[114], 1, "lp_withdrawn set");
+    }
+
+    #[test]
+    fn withdraw_lp_inside_grace_window_still_not_settled() {
+        let mut fx = setup();
+        // Exactly at deadline + grace: strict `>` means NOT yet expired.
+        fx.mollusk.sysvars.clock = Clock { unix_timestamp: SETTLE_GRACE, ..Clock::default() };
+        let lp = fx.lp_owner;
+        let market = fx.market_key;
+        fx.run(
+            &market, &lp, PROGRAM_ID,
+            STATUS_OPEN, 0, 1_500_000, 700_000, 20_000, false,
+            &[Check::err(SvmProgramError::Custom(OnyxError::NotSettled as u32))],
+        );
+    }
+
+    #[test]
+    fn withdraw_lp_expired_double_withdraw_rejected() {
+        let mut fx = setup();
+        fx.mollusk.sysvars.clock = Clock { unix_timestamp: SETTLE_GRACE + 10, ..Clock::default() };
+        let lp = fx.lp_owner;
+        let market = fx.market_key;
+        fx.run(
+            &market, &lp, PROGRAM_ID,
+            STATUS_OPEN, 0, 1_500_000, 700_000, 20_000, /* lp_withdrawn */ true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::LpAlreadyWithdrawn as u32))],
         );
     }
 

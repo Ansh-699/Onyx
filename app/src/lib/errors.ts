@@ -30,7 +30,7 @@ const PROGRAM_ERRORS: Record<number, string> = {
   6026: "Slippage protection triggered: the pool price moved past your tolerance before the swap landed, so it was reverted — nothing was traded. Re-quote and try again (or widen your tolerance).",
   6027: "The pool doesn't have enough liquidity for that swap.",
   6028: "AMM pools can only be created on plain markets, not sealed-batch ones.",
-  6029: "The market hasn't settled yet — LP withdrawal opens after settlement.",
+  6029: "The market hasn't settled yet — LP withdrawal opens after settlement, or after the deadline + 2h grace if the market never settles.",
   6030: "This position was already redeemed.",
   6031: "LP liquidity was already withdrawn from this pool.",
   7000: "An account didn't match its expected derivation (client bug — please report).",

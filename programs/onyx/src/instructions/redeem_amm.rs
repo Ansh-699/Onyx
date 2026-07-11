@@ -13,6 +13,16 @@
 //!      returns the specific `AlreadyRedeemed` rather than the generic
 //!      `NothingToRefund`, so the two "nothing to withdraw" cases are
 //!      distinguishable by the caller.
+//!   2b. Expiry refund (docs/AMM_TRADING_DESIGN.md §3): if the market never
+//!      settles by `deadline + SETTLE_GRACE`, the same leg-2 slot instead
+//!      pays `min(tokens_a, tokens_b)` — the riskless complete-set component
+//!      of the position. The directional residual `|ta - tb|` is the
+//!      position's genuine risk and dies unpaid. No market-status flip is
+//!      needed (unlike refund_expired): `min(ta,tb) <= t_winning` for every
+//!      position, so an expiry refund always pays <= what settlement would
+//!      pay that same account — a late permissionless settle landing after
+//!      some positions already refunded stays solvent by construction, and
+//!      both paths zero balances behind the same `redeemed` guard.
 //!
 //! Accounts: [0] owner (S) · [1] market (read) · [2] position (W)
 //!           · [3] vault (W) · [4] owner_usdc_ata (W) · [5] token program
@@ -26,6 +36,7 @@ use pinocchio::{
     account_info::AccountInfo,
     instruction::{Seed, Signer},
     pubkey::{find_program_address, Pubkey},
+    sysvars::{clock::Clock, Sysvar},
     ProgramResult,
 };
 use pinocchio_token::instructions::Transfer;
@@ -47,10 +58,10 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> P
         return Err(OnyxError::InvalidOwner.into());
     }
 
-    let (market_status, outcome, vault_bump) = {
+    let (market_status, outcome, deadline, vault_bump) = {
         let mut mdata = market_ai.try_borrow_mut_data()?;
         let market = Market::load(&mut mdata)?;
-        (market.status(), market.outcome(), market.vault_bump())
+        (market.status(), market.outcome(), market.deadline(), market.vault_bump())
     };
 
     let mut pdata = position_ai.try_borrow_mut_data()?;
@@ -66,17 +77,24 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> P
     let mut payout = position.usdc_available();
 
     let settled = market_status == STATUS_SETTLED || market_status == STATUS_CLAIMED;
-    if settled && !already_redeemed {
-        let winning_side = if outcome == OUTCOME_SIDE_A { SIDE_A } else { SIDE_B };
-        let tokens_winning = if winning_side == SIDE_A { position.tokens_a() } else { position.tokens_b() };
-        payout = payout.checked_add(tokens_winning).ok_or(OnyxError::ArithmeticOverflow)?;
+    let expired =
+        !settled && Clock::get()?.unix_timestamp > deadline.saturating_add(SETTLE_GRACE);
+    if (settled || expired) && !already_redeemed {
+        let tokens_payable = if settled {
+            let winning_side = if outcome == OUTCOME_SIDE_A { SIDE_A } else { SIDE_B };
+            if winning_side == SIDE_A { position.tokens_a() } else { position.tokens_b() }
+        } else {
+            // Expiry: riskless complete-set component only.
+            position.tokens_a().min(position.tokens_b())
+        };
+        payout = payout.checked_add(tokens_payable).ok_or(OnyxError::ArithmeticOverflow)?;
         position.set_tokens_a(0);
         position.set_tokens_b(0);
         position.set_redeemed(true);
     }
 
     if payout == 0 {
-        if settled && already_redeemed {
+        if (settled || expired) && already_redeemed {
             return Err(OnyxError::AlreadyRedeemed.into());
         }
         return Err(OnyxError::NothingToRefund.into());
@@ -129,8 +147,11 @@ mod tests {
     use solana_rent::Rent;
     use spl_token_interface::state::{Account as TokenAccountState, AccountState};
 
+    use solana_clock::Clock;
+
     use crate::constants::{
-        DISC_MARKET, IX_REDEEM_AMM, OUTCOME_SIDE_A, OUTCOME_SIDE_B, STATUS_OPEN, STATUS_SETTLED,
+        DISC_MARKET, IX_REDEEM_AMM, OUTCOME_SIDE_A, OUTCOME_SIDE_B, SETTLE_GRACE, STATUS_OPEN,
+        STATUS_SETTLED,
     };
     use crate::error::OnyxError;
     use crate::state::amm_position::AMM_POSITION_LEN;
@@ -399,6 +420,81 @@ mod tests {
             &owner, &market, PROGRAM_ID,
             200_000, STATUS_OPEN, 0, 0, 0, false,
             &[Check::err(SvmProgramError::Custom(OnyxError::VaultUnderfunded as u32))],
+        );
+    }
+
+    // Expiry-refund tests: fixture markets have deadline = 0 (see
+    // market_bytes), so warping the clock past SETTLE_GRACE is the expiry
+    // condition — same simulated-Clock discipline as refund_expired.rs.
+
+    #[test]
+    fn redeem_expired_pays_available_plus_min_tokens() {
+        let mut fx = setup();
+        fx.mollusk.sysvars.clock = Clock { unix_timestamp: SETTLE_GRACE + 10, ..Clock::default() };
+        let owner = fx.owner;
+        let market = fx.market_key;
+        let resulting = fx.run(
+            &owner, &market, PROGRAM_ID,
+            /* usdc_available */ 100_000, STATUS_OPEN, 0, /* tokens_a */ 300_000, /* tokens_b */ 120_000,
+            false,
+            &[Check::success()],
+        );
+        let ata_after = resulting.iter().find(|(k, _)| *k == fx.owner_ata).unwrap();
+        assert_eq!(
+            TokenAccountState::unpack(&ata_after.1.data).unwrap().amount,
+            220_000,
+            "available + min(ta,tb); directional residual 180k dies"
+        );
+        let position_after = resulting.iter().find(|(k, _)| *k == fx.position_key).unwrap();
+        assert_eq!(&position_after.1.data[80..88], &0u64.to_le_bytes(), "tokens_a zeroed");
+        assert_eq!(&position_after.1.data[88..96], &0u64.to_le_bytes(), "tokens_b zeroed");
+        assert_eq!(position_after.1.data[104], 1, "redeemed set");
+    }
+
+    #[test]
+    fn redeem_inside_grace_window_tokens_not_payable() {
+        let mut fx = setup();
+        // Exactly at deadline + grace: strict `>` means NOT yet expired.
+        fx.mollusk.sysvars.clock = Clock { unix_timestamp: SETTLE_GRACE, ..Clock::default() };
+        let owner = fx.owner;
+        let market = fx.market_key;
+        fx.run(
+            &owner, &market, PROGRAM_ID,
+            /* usdc_available */ 0, STATUS_OPEN, 0, /* tokens_a */ 300_000, /* tokens_b */ 120_000,
+            false,
+            &[Check::err(SvmProgramError::Custom(OnyxError::NothingToRefund as u32))],
+        );
+    }
+
+    #[test]
+    fn redeem_expired_double_refund_rejected() {
+        let mut fx = setup();
+        fx.mollusk.sysvars.clock = Clock { unix_timestamp: SETTLE_GRACE + 10, ..Clock::default() };
+        let owner = fx.owner;
+        let market = fx.market_key;
+        fx.run(
+            &owner, &market, PROGRAM_ID,
+            0, STATUS_OPEN, 0, 300_000, 120_000,
+            /* redeemed */ true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::AlreadyRedeemed as u32))],
+        );
+    }
+
+    #[test]
+    fn redeem_expiry_refund_then_late_settle_cannot_double_dip() {
+        // A position refunded under expiry (redeemed = true, tokens zeroed)
+        // gets nothing more from a settle that lands afterwards — the same
+        // `redeemed` guard covers both paths, so refund/settle mixing is
+        // solvent per position.
+        let mut fx = setup();
+        fx.mollusk.sysvars.clock = Clock { unix_timestamp: SETTLE_GRACE + 10, ..Clock::default() };
+        let owner = fx.owner;
+        let market = fx.market_key;
+        fx.run(
+            &owner, &market, PROGRAM_ID,
+            0, STATUS_SETTLED, OUTCOME_SIDE_A, /* tokens (already zeroed by refund) */ 0, 0,
+            /* redeemed */ true,
+            &[Check::err(SvmProgramError::Custom(OnyxError::AlreadyRedeemed as u32))],
         );
     }
 

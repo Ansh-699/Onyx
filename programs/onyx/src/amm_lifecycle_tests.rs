@@ -431,3 +431,79 @@ fn full_lifecycle_different_ordering_and_outcome_b_also_solvent() {
     assert_eq!(world.token_balance(&s.vault), 0, "vault must drain to EXACTLY zero regardless of ordering or winning side");
     let _ = s.mint;
 }
+
+#[test]
+fn full_lifecycle_expiry_unwind_pays_complete_sets_and_leaves_exact_residual() {
+    // Scenario 3 (docs/AMM_TRADING_DESIGN.md §3): the market NEVER settles.
+    // After deadline + SETTLE_GRACE, every position refunds usdc_available +
+    // min(tokens_a, tokens_b) and the LP takes min(reserves) + fees. Unlike
+    // the settled scenarios the vault does NOT drain to zero: the unpaid
+    // directional residuals (|ta-tb| per position, |ra-rb| for the pool)
+    // remain as permanently unclaimable dust. Same lamport-exact discipline,
+    // different target — the vault must land on EXACTLY that residual,
+    // computed independently from pre-refund state.
+    let mut world = setup_world();
+    let seed = 1_000_000u64;
+    let fee_bps = 100u16;
+    let alice_deposit = 400_000u64;
+    let bob_deposit = 500_000u64;
+    let total_deposited = seed + alice_deposit + bob_deposit;
+    let s = wire_up(&mut world, seed, fee_bps, alice_deposit, bob_deposit);
+
+    // Asymmetric trading so every party ends with a real directional residual.
+    world.call(&ix_swap_amm(&s.alice, &s.market, &s.pool, &s.alice_position, SIDE_A, SWAP_BUY, 250_000, 0), &[Check::success()]);
+    world.call(&ix_swap_amm(&s.bob, &s.market, &s.pool, &s.bob_position, SIDE_B, SWAP_BUY, 180_000, 0), &[Check::success()]);
+    world.call(&ix_swap_amm(&s.alice, &s.market, &s.pool, &s.alice_position, SIDE_B, SWAP_BUY, 60_000, 0), &[Check::success()]);
+    let bob_tb = read_u64(&world.get(&s.bob_position).data, 88);
+    world.call(&ix_swap_amm(&s.bob, &s.market, &s.pool, &s.bob_position, SIDE_B, SWAP_SELL, bob_tb / 4, 0), &[Check::success()]);
+    assert_mid_lifecycle_solvency(&world, &s.alice_position, &s.bob_position, &s.pool, total_deposited, "after swaps, before expiry");
+
+    // NO settle. Warp past deadline + grace instead.
+    world.mollusk.sysvars.clock = Clock { unix_timestamp: DEADLINE + SETTLE_GRACE + 1, ..Clock::default() };
+
+    // Expected payouts + residual, computed independently from pre-refund state.
+    let a = world.get(&s.alice_position).data.clone();
+    let b = world.get(&s.bob_position).data.clone();
+    let p = world.get(&s.pool).data.clone();
+    let (alice_usdc, alice_ta, alice_tb) = (read_u64(&a, 72), read_u64(&a, 80), read_u64(&a, 88));
+    let (bob_usdc, bob_ta, bob_tb) = (read_u64(&b, 72), read_u64(&b, 80), read_u64(&b, 88));
+    let (reserve_a, reserve_b, fees) = (read_u64(&p, 72), read_u64(&p, 80), read_u64(&p, 96));
+    let alice_expected = alice_usdc + alice_ta.min(alice_tb);
+    let bob_expected = bob_usdc + bob_ta.min(bob_tb);
+    let lp_expected = reserve_a.min(reserve_b) + fees;
+    let expected_residual = total_deposited - alice_expected - bob_expected - lp_expected;
+    assert!(alice_ta != alice_tb && bob_ta != bob_tb && reserve_a != reserve_b, "scenario must exercise real directional residuals");
+    assert!(expected_residual > 0, "a pure-expiry unwind of an asymmetric book must leave non-zero dust");
+
+    let alice_ata_before = world.token_balance(&s.alice_ata);
+    let bob_ata_before = world.token_balance(&s.bob_ata);
+    let creator_ata_before = world.token_balance(&s.creator_ata);
+
+    world.call(&ix_redeem_amm(&s.alice, &s.market, &s.alice_position, &s.vault, &s.alice_ata), &[Check::success()]);
+    world.call(&ix_redeem_amm(&s.bob, &s.market, &s.bob_position, &s.vault, &s.bob_ata), &[Check::success()]);
+    world.call(&ix_withdraw_lp_amm(&s.creator, &s.market, &s.pool, &s.vault, &s.creator_ata), &[Check::success()]);
+
+    assert_eq!(world.token_balance(&s.alice_ata) - alice_ata_before, alice_expected, "alice expiry refund = deposits + min(ta,tb) exactly");
+    assert_eq!(world.token_balance(&s.bob_ata) - bob_ata_before, bob_expected, "bob expiry refund = deposits + min(ta,tb) exactly");
+    assert_eq!(world.token_balance(&s.creator_ata) - creator_ata_before, lp_expected, "LP expiry payout = min(reserves) + fees exactly");
+    assert_eq!(
+        world.token_balance(&s.vault),
+        expected_residual,
+        "vault must land on EXACTLY the sum of directional residuals — nothing more paid, nothing extra stranded"
+    );
+
+    // Double-dip guards hold on the expiry path too.
+    let accounts = vec![
+        (s.alice, world.get(&s.alice).clone()),
+        (s.market, world.get(&s.market).clone()),
+        (s.alice_position, world.get(&s.alice_position).clone()),
+        (s.vault, world.get(&s.vault).clone()),
+        (s.alice_ata, world.get(&s.alice_ata).clone()),
+        mollusk_svm_programs_token::token::keyed_account(),
+    ];
+    world.mollusk.process_and_validate_instruction(
+        &ix_redeem_amm(&s.alice, &s.market, &s.alice_position, &s.vault, &s.alice_ata),
+        &accounts,
+        &[Check::err(SvmProgramError::Custom(OnyxError::AlreadyRedeemed as u32))],
+    );
+}

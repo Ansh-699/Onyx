@@ -53,6 +53,9 @@ export const OUTCOME_NAMES: Record<number, string> = {
 };
 export const OUTCOME_SIDE_A = 1;
 export const OUTCOME_SIDE_B = 2;
+/** Mirror of the program's SETTLE_GRACE: past deadline + this, an unsettled
+ *  AMM market's expiry-refund path opens (redeem_amm / withdraw_lp_amm). */
+export const SETTLE_GRACE_SEC = 7200;
 export const OP_NAMES: Record<number, string> = { 0: "Add", 1: "Subtract", 255: "—" };
 export const CMP_SYMBOLS: Record<number, string> = { 0: ">", 1: "<", 2: "=" };
 

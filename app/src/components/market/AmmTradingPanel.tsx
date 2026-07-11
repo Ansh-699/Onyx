@@ -33,6 +33,7 @@ import {
   STATUS_SETTLED,
   STATUS_CLAIMED,
   OUTCOME_SIDE_A,
+  SETTLE_GRACE_SEC,
   getConfigUsdcMint,
   getConnection,
   explorerTxUrl,
@@ -108,6 +109,9 @@ export function AmmTradingPanel({
   const settled = market.status === STATUS_SETTLED || market.status === STATUS_CLAIMED;
   const deadlinePassed = Math.floor(Date.now() / 1000) >= Number(market.deadline);
   const tradingOpen = !settled && !deadlinePassed;
+  // Mirrors the program gate (strict >): never-settled market past
+  // deadline + grace opens the expiry-refund path in redeem/withdraw_lp.
+  const expired = !settled && Math.floor(Date.now() / 1000) > Number(market.deadline) + SETTLE_GRACE_SEC;
 
   const priceA = spotPriceScaled(pool.reserveA, pool.reserveB);
   const priceB = 1_000_000n - priceA;
@@ -278,7 +282,11 @@ export function AmmTradingPanel({
   }
 
   const winningTokens = settled ? (market.outcome === OUTCOME_SIDE_A ? (position?.tokensA ?? 0n) : (position?.tokensB ?? 0n)) : 0n;
-  const redeemable = (position?.usdcAvailable ?? 0n) + (settled && !position?.redeemed ? winningTokens : 0n);
+  // Expiry pays the riskless complete-set component; the directional residual dies.
+  const setTokens = position ? (position.tokensA < position.tokensB ? position.tokensA : position.tokensB) : 0n;
+  const redeemable =
+    (position?.usdcAvailable ?? 0n) +
+    (position?.redeemed ? 0n : settled ? winningTokens : expired ? setTokens : 0n);
 
   return (
     <div className={`card ${styles.wrap}`}>
@@ -457,14 +465,16 @@ export function AmmTradingPanel({
       )}
 
       {/* position card + redeem */}
-      {connected && position && (redeemable > 0n || settled) && !isDelegated && (
+      {connected && position && (redeemable > 0n || settled || expired) && !isDelegated && (
         <div className={styles.payout}>
           <span className={styles.fieldLabel}>Your position</span>
           <span className={styles.payoutBig} data-testid="amm-redeemable">
-            {settled
+            {settled || expired
               ? position.redeemed
                 ? "Redeemed ✓"
-                : `Redeemable now: ${fmtUsdc(redeemable)} tUSDC${winningTokens > 0n ? ` (incl. ${fmtUsdc(winningTokens)} winning tokens @ 1:1)` : ""}`
+                : settled
+                  ? `Redeemable now: ${fmtUsdc(redeemable)} tUSDC${winningTokens > 0n ? ` (incl. ${fmtUsdc(winningTokens)} winning tokens @ 1:1)` : ""}`
+                  : `Refundable now: ${fmtUsdc(redeemable)} tUSDC — market never settled; refund = deposits + paired token value (min of both sides); the directional residual is lost`
               : `Withdrawable deposit: ${fmtUsdc(position.usdcAvailable)} tUSDC (tokens stay tradeable)`}
           </span>
           {!position.redeemed && redeemable > 0n && (
@@ -490,8 +500,12 @@ export function AmmTradingPanel({
             <strong>LP capital is genuinely at risk</strong> — if traders load up on the side that wins, the
             winning-side reserve you withdraw can be worth less than your seed (observed live in testing: both a
             gain and a loss). Withdrawable after settlement: winning-side reserve + fees.
+            {expired && (
+              <> This market never settled — past the 2h grace you can withdraw the paired reserve value
+              (min of both sides) + fees; the directional residual is lost.</>
+            )}
           </p>
-          {settled && !pool.lpWithdrawn && !isDelegated && (
+          {(settled || expired) && !pool.lpWithdrawn && !isDelegated && (
             <button className="button" type="button" onClick={onWithdrawLp} disabled={!!busy}>
               Withdraw LP capital + fees
             </button>
