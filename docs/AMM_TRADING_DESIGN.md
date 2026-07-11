@@ -236,7 +236,12 @@ New base-layer instructions after undelegate+settle:
   wrong (manipulable); v1 honest rule: unresolved-market refund pays
   `usdc_available + min(tokens_a, tokens_b)` (the riskless complete-set
   component); the directional residual is the position's genuine risk. LP
-  refund symmetric: `min(reserve_a, reserve_b)` + fees. Documented, tested.
+  refund symmetric: `min(reserve_a, reserve_b)` + fees. **Status: designed,
+  NOT implemented in v1** — deposits are redeemable anytime via redeem_amm
+  (no trap), but outcome-token complete-set value and the LP seed on a
+  market whose fixture never gets oracle data have no recovery path yet.
+  Mitigated in practice by permissionless settlement + the live any-fixture
+  proof pipeline; roadmap item, honestly labeled.
 
 ## 4. Account & instruction surface (additive; discs 29–36, account discs 6–7)
 
