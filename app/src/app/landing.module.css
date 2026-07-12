@@ -8,6 +8,19 @@
   margin-left: calc(50% - 50vw);
   margin-top: -32px; /* cancel main's padding — the sky starts at the very top */
   margin-bottom: -96px;
+  /* color the cloud photo hands off to at the skyZone/.lower boundary —
+     must match .lower's gradient start in BOTH themes or a band shows */
+  --sky-handoff: #dcebf8;
+}
+
+:global([data-theme="dark"]) .bleed {
+  --sky-handoff: #09090b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme])) .bleed {
+    --sky-handoff: #09090b;
+  }
 }
 
 /* ---------- announcement strip ---------- */
@@ -31,8 +44,22 @@
 /* the sky wraps hero AND panel, so blue reaches down past the app showcase
    on both sides (reference behavior) */
 .skyZone {
+  /* real cumulus photo at the bottom, our gradient blended over the top —
+     the gradient goes transparent mid-way so the photo's own sky takes
+     over, and the clouds rise up behind the app panel. (Trial — the plain
+     gradient version is in git history if this gets reverted.) */
   background:
-    linear-gradient(180deg, #1a4da8 0%, #2660c4 22%, #3a74d4 44%, #5f96e0 64%, #8cb6ea 82%, #c3daf3 94%, #dcebf8 100%);
+    linear-gradient(
+      180deg,
+      #1a4da8 0%,
+      #2b64c6 20%,
+      rgba(62, 118, 209, 0.85) 36%,
+      rgba(94, 134, 186, 0.35) 52%,
+      transparent 68%,
+      transparent 80%,
+      var(--sky-handoff) 100%
+    ),
+    url("../assets/clouds.jpg") center bottom / cover no-repeat;
   padding-bottom: 64px;
 }
 
@@ -310,7 +337,7 @@
 /* ---------- light lower sections ---------- */
 
 .lower {
-  background: linear-gradient(180deg, #dcebf8 0%, var(--bg) 22%);
+  background: linear-gradient(180deg, var(--sky-handoff) 0%, var(--bg) 22%);
   padding: 56px 16px 40px;
 }
 

@@ -161,6 +161,9 @@ html,
 body {
   padding: 0;
   margin: 0;
+  /* full-bleed sections use 100vw (which includes the scrollbar gutter) and
+     the footer watermark intentionally overflows — clip, never h-scroll */
+  overflow-x: clip;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
