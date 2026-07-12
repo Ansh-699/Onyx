@@ -525,12 +525,12 @@ export function AmmTradingPanel({
             <label className={styles.field}>
               <span className={styles.fieldLabel}>Action</span>
               <select value={direction} onChange={(e) => setDirection(Number(e.target.value))} data-testid="amm-direction">
-                <option value={SWAP_BUY}>Buy {side === SIDE_A ? "A" : "B"} (spend tUSDC)</option>
-                <option value={SWAP_SELL}>Sell {side === SIDE_A ? "A" : "B"} (receive tUSDC)</option>
+                <option value={SWAP_BUY}>Buy</option>
+                <option value={SWAP_SELL}>Sell</option>
               </select>
             </label>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>{direction === SWAP_BUY ? "Spend (tUSDC)" : `Sell (${side === SIDE_A ? "A" : "B"} tokens)`}</span>
+              <span className={styles.fieldLabel}>{direction === SWAP_BUY ? "Spend (USDC)" : `Sell (${side === SIDE_A ? "YES" : "NO"} tokens)`}</span>
               <input value={amountStr} onChange={(e) => setAmountStr(e.target.value)} inputMode="decimal" placeholder="0.5" data-testid="amm-amount" />
             </label>
           </div>
@@ -603,13 +603,14 @@ export function AmmTradingPanel({
       )}
       {connected && tradingOpen && isDelegated && !position && myPosition.isFetched && (
         <div className={styles.step}>
-          <div className={styles.stepHead}>Pool is on the ER — bring your position along</div>
+          <div className={styles.stepHead}>One more approval to finish setup</div>
           <p className={styles.blurb}>
-            Your position account isn&apos;t delegated yet (or doesn&apos;t exist — deposit first on base, then
-            delegate it). Swaps need both pool and position on the same ledger.
+            This market trades on the speed layer, but your funds are still on the slower base ledger (this
+            happens after &ldquo;add funds &amp; approve each trade&rdquo;). One approval moves them over so
+            buys and sells work here.
           </p>
           <button className="button" data-variant="ghost" type="button" onClick={onDelegateMyPosition} disabled={!!busy}>
-            Delegate my position
+            Finish setup (1 approval)
           </button>
         </div>
       )}

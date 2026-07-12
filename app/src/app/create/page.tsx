@@ -197,7 +197,7 @@ export default function CreatePage() {
   }
 
   return (
-    <>
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
       <h1>Create market</h1>
       <p className="muted">
         {marketType === "sealed" ? (
@@ -414,6 +414,6 @@ export default function CreatePage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

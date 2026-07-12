@@ -351,7 +351,7 @@ export default function PortfolioPage() {
                     </span>
                     {!p.redeemed && redeemable > 0n && (
                       <Link href={`/market/${p.market}`} className="button" data-variant="ghost">
-                        Go redeem →
+                        Withdraw →
                       </Link>
                     )}
                   </div>

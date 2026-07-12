@@ -76,3 +76,33 @@
   font-size: 0.78rem;
   color: var(--text-dim);
 }
+
+/* ---------- vault withdrawables ---------- */
+
+.withdrawRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.82rem;
+}
+
+.withdrawRow:last-child {
+  border-bottom: none;
+}
+
+.withdrawTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.withdrawAmt {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--green);
+  white-space: nowrap;
+}

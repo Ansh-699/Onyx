@@ -18,7 +18,11 @@ import type { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.j
 export type SignTransactionFn = <T extends Transaction>(tx: T) => Promise<T>;
 
 const CONFIRM_TIMEOUT_MS = 75_000;
-const POLL_MS = 3_000;
+// First status check comes early (ER swaps confirm in ~1s — when the WS
+// notification drops, a 3s first poll was the whole perceived latency),
+// then settles into a gentler cadence to stay under devnet rate limits.
+const FIRST_POLL_MS = 700;
+const POLL_MS = 1_500;
 const REBROADCAST_MS = 5_000;
 
 const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
@@ -57,8 +61,10 @@ export async function broadcastAndConfirm(
     (async () => {
       const t0 = Date.now();
       let lastSend = t0;
+      let firstPoll = true;
       while (!done && Date.now() - t0 < CONFIRM_TIMEOUT_MS) {
-        await new Promise((r) => setTimeout(r, POLL_MS));
+        await new Promise((r) => setTimeout(r, firstPoll ? FIRST_POLL_MS : POLL_MS));
+        firstPoll = false;
         if (done) return;
         try {
           const st = (await conn.getSignatureStatuses([sig])).value[0];
