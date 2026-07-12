@@ -3,7 +3,7 @@
 // The landing hero + floating preview panel, as one client component:
 // - hero tab pill = a real tablist (state, arrow keys, aria) that swaps the
 //   PANEL CONTENT in place — no navigation. Only "Launch App", the panel's
-//   "Launch" button, and the Docs link leave the page.
+//   "Launch" button leave the page.
 // - glass surfaces (credibility pill, CTA, tab pill) use liquid-glass-react
 //   with the exact requested settings on Chromium; non-Chromium browsers
 //   fall back to the plain CSS glass (the lib's displacement filter only
@@ -29,12 +29,32 @@ export interface PreviewMarket {
   volume: string;
 }
 
+export interface ActivityRow {
+  title: string;
+  side: number; // 1 = Yes, 2 = No
+  dir: number; // 0 = buy, 1 = sell
+  amount: string;
+  priceCents: number;
+  t: number;
+}
+
 const TABS = [
   { id: "markets", label: "Markets" },
   { id: "trade", label: "Trade" },
   { id: "portfolio", label: "Portfolio" },
+  { id: "activity", label: "Activity" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
+
+function timeAgo(t: number): string {
+  const s = Math.max(1, Math.floor((Date.now() - t) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
 
 function fmt(n: number, dp = 2): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -99,7 +119,43 @@ function PortfolioScreen({ preview }: { preview: PreviewMarket[] }) {
   );
 }
 
-export function LandingHero({ demo, preview }: { demo: DemoData | null; preview: PreviewMarket[] }) {
+/** Activity screen: recent REAL recorded swaps (each exists on-chain). */
+function ActivityScreen({ activity }: { activity: ActivityRow[] }) {
+  if (activity.length === 0) {
+    return (
+      <p className={demoStyles.chipLabel} style={{ padding: 24 }}>
+        recent trades load from devnet
+      </p>
+    );
+  }
+  return (
+    <div className={demoStyles.activityScreen}>
+      <div className={demoStyles.chipLabel}>recent trades · real recorded on-chain swaps · includes seeded market-making</div>
+      {activity.map((a, i) => (
+        <div key={`${a.t}-${i}`} className={demoStyles.activityRow}>
+          <span className={demoStyles.activitySide} data-side={a.side}>
+            {a.dir === 0 ? "Bought" : "Sold"} {a.side === 1 ? "Yes" : "No"}
+          </span>
+          <span className={demoStyles.activityTitle}>{a.title}</span>
+          <span className={demoStyles.activityAmt}>
+            {a.amount} {a.dir === 0 ? "tUSDC" : "tokens"} · {a.priceCents}¢
+          </span>
+          <span className={demoStyles.activityWhen}>{timeAgo(a.t)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function LandingHero({
+  demo,
+  preview,
+  activity,
+}: {
+  demo: DemoData | null;
+  preview: PreviewMarket[];
+  activity: ActivityRow[];
+}) {
   const heroRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -148,7 +204,7 @@ export function LandingHero({ demo, preview }: { demo: DemoData | null; preview:
       <section className={styles.hero}>
         <div className={`${styles.heroItem} ${styles.d0}`}>
           <span className={styles.wordmark}>
-            <Image src={logoLight} alt="" width={34} height={34} className={styles.logoImg} priority />
+            <Image src={logoLight} alt="" width={26} height={26} className={styles.logoImg} priority />
             ONYX
           </span>
         </div>
@@ -207,9 +263,6 @@ export function LandingHero({ demo, preview }: { demo: DemoData | null; preview:
                 {t.label}
               </button>
             ))}
-            <Link href="/how-to-trade" className={styles.docsLink}>
-              Docs ↗
-            </Link>
           </div>
         </div>
       </section>
@@ -260,6 +313,7 @@ export function LandingHero({ demo, preview }: { demo: DemoData | null; preview:
                 ))}
               {activeTab === "markets" && <MarketsScreen preview={preview} />}
               {activeTab === "portfolio" && <PortfolioScreen preview={preview} />}
+              {activeTab === "activity" && <ActivityScreen activity={activity} />}
             </div>
           </div>
         </div>

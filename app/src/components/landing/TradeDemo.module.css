@@ -586,3 +586,57 @@
   font-weight: 700;
   white-space: nowrap;
 }
+
+/* ---------- activity screen ---------- */
+
+.activityScreen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 22px;
+}
+
+.activityRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--p-border);
+  border-radius: 10px;
+  background: var(--p-card);
+  font-size: 0.82rem;
+}
+
+.activitySide {
+  font-weight: 700;
+  min-width: 86px;
+}
+
+.activitySide[data-side="1"] {
+  color: var(--p-green);
+}
+
+.activitySide[data-side="2"] {
+  color: var(--p-red);
+}
+
+.activityTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--p-dim);
+}
+
+.activityAmt {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.activityWhen {
+  font-size: 0.72rem;
+  color: var(--p-dim);
+  white-space: nowrap;
+}

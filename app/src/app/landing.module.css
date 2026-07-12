@@ -32,8 +32,8 @@
    on both sides (reference behavior) */
 .skyZone {
   background:
-    linear-gradient(180deg, #1d54b4 0%, #2e6ace 26%, #4f86d8 52%, #7fade6 74%, #b9d4f0 92%, #dcebf8 100%);
-  padding-bottom: 56px;
+    linear-gradient(180deg, #123c8f 0%, #1d54b4 18%, #2e6ace 40%, #4f86d8 62%, #7fade6 80%, #b9d4f0 93%, #dcebf8 100%);
+  padding-bottom: 64px;
 }
 
 .hero {
@@ -41,15 +41,16 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 40px 16px 44px; /* wordmark up; panel follows in normal flow inside the sky */
+  /* generous top band of pure sky before any content; bigger gap to the panel below */
+  padding: 88px 16px 72px;
 }
 
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: #fff;
-  font-size: 1.6rem;
+  font-size: 1.25rem;
   font-weight: 750;
   letter-spacing: 0.08em;
 }
@@ -64,15 +65,15 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  margin-top: 18px;
-  padding: 9px 20px;
+  margin-top: 16px;
+  padding: 7px 16px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   background: rgba(10, 30, 70, 0.35);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   color: #fff;
-  font-size: 0.86rem;
+  font-size: 0.78rem;
   font-weight: 650;
 }
 
@@ -83,20 +84,20 @@
 }
 
 .heroTitle {
-  margin: 30px 0 0;
+  margin: 26px 0 0;
   color: #fff;
-  font-size: clamp(2.5rem, 5.4vw, 4rem);
-  line-height: 1.06;
+  font-size: clamp(2.25rem, 5vw, 3.25rem);
+  line-height: 1.05;
   letter-spacing: -0.03em;
   font-weight: 750;
   text-shadow: 0 2px 30px rgba(15, 45, 110, 0.35);
 }
 
 .heroSub {
-  margin: 18px 0 0;
+  margin: 14px 0 0;
   max-width: 520px;
   color: rgba(255, 255, 255, 0.82);
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1.6;
 }
 
@@ -128,10 +129,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 26px;
-  padding: 11px 38px;
+  margin-top: 22px;
+  padding: 8px 28px;
   border-radius: 999px;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: #0d3f7a;
   text-decoration: none;
@@ -185,8 +186,8 @@
 .pillNav {
   display: inline-flex;
   gap: 2px;
-  margin-top: 26px;
-  padding: 5px;
+  margin-top: 20px;
+  padding: 4px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.3);
   background: rgba(255, 255, 255, 0.16);
@@ -196,13 +197,13 @@
 
 .pillNav button,
 .pillNav a {
-  padding: 8px 20px;
+  padding: 6px 15px;
   border-radius: 999px;
   border: none;
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   font-weight: 650;
   color: rgba(16, 42, 74, 0.72); /* darker — readable over the pale glass pill */
   text-decoration: none;
@@ -234,7 +235,7 @@
 .panelZone {
   position: relative;
   z-index: 2;
-  padding: 0 16px;
+  padding: 24px 16px 0;
 }
 
 .panelFallback {

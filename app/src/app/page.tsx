@@ -36,12 +36,22 @@ interface PreviewMarket {
   volume: string;
 }
 
+interface ActivityRow {
+  title: string;
+  side: number; // 1 = Yes, 2 = No
+  dir: number; // 0 = buy, 1 = sell
+  amount: string; // display tUSDC / tokens
+  priceCents: number;
+  t: number; // unix ms
+}
+
 interface LiveData {
   totalMarkets: number;
   settledCount: number;
   volumeRaw: bigint;
   demo: DemoData | null;
   preview: PreviewMarket[];
+  activity: ActivityRow[];
 }
 
 async function getLiveData(): Promise<LiveData | null> {
@@ -105,7 +115,38 @@ async function getLiveData(): Promise<LiveData | null> {
       };
     });
 
-    return { totalMarkets: markets.length, settledCount, volumeRaw, demo, preview };
+    // Activity feed: recent REAL recorded swaps across the candidate
+    // markets' pools (each row exists on-chain; the store also holds its
+    // tx signature). Price shown = the pool price recorded at that moment.
+    const activity: ActivityRow[] = [];
+    for (const { m, pool } of candidates.slice(0, 6)) {
+      const hist = history.pools[pool.pool];
+      if (!hist) continue;
+      const info = getFixtureInfo(Number(m.fixtureId))!;
+      // fixture prefix disambiguates same-predicate markets on different matches
+      const title = `${info.participant1}–${info.participant2} · ${describeMarketPredicate(m, info)}`;
+      for (const tr of hist.trades.slice(-8)) {
+        if (tr.amountIn === "0") continue; // early records lacked the amount — skip, don't guess
+        // nearest recorded price point at trade time
+        let price = 500_000;
+        for (const pt of hist.points) {
+          if (pt.t <= tr.t + 2_000) price = pt.priceA;
+          else break;
+        }
+        const cents = Math.round(price / 10_000);
+        activity.push({
+          title,
+          side: tr.side,
+          dir: tr.dir,
+          amount: (Number(BigInt(tr.amountIn)) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 }),
+          priceCents: tr.side === 1 ? cents : 100 - cents,
+          t: tr.t,
+        });
+      }
+    }
+    activity.sort((a, b) => b.t - a.t);
+
+    return { totalMarkets: markets.length, settledCount, volumeRaw, demo, preview, activity: activity.slice(0, 10) };
   } catch {
     return null;
   }
@@ -134,14 +175,14 @@ export default async function LandingPage() {
       {/* announcement strip */}
       <div className={styles.announce}>
         Now live on Solana devnet ·{" "}
-        <a href="https://github.com/Ansh-699/Onyx" target="_blank" rel="noreferrer">
-          github.com/Ansh-699/Onyx
+        <a href="https://github.com/Ansh-699" target="_blank" rel="noopener noreferrer">
+          Github
         </a>
       </div>
 
       {/* ---- sky hero + tabbed preview panel (client component) ---- */}
       <div className={styles.skyZone}>
-        <LandingHero demo={live?.demo ?? null} preview={live?.preview ?? []} />
+        <LandingHero demo={live?.demo ?? null} preview={live?.preview ?? []} activity={live?.activity ?? []} />
       </div>
 
       {/* ---- light lower sections ---- */}
