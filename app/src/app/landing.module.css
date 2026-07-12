@@ -1,73 +1,100 @@
-/* Landing page — into.space structure in ONYX's light liquid-glass
-   language. Glass earns its keep in three places: the hero CTA (the
-   signature move, with a specular sheen sweep on hover), the app-preview
-   frame, and the feature cards' rims. Animations are CSS-first and fully
-   disabled under prefers-reduced-motion. */
+/* into.space-style landing, theme variant A (Sky): deep-blue → cloud
+   gradient hero with white type, one glass CTA, and the dark app panel
+   floating up over the fold. Full-bleed: breaks out of main's 1100px
+   container. All motion respects prefers-reduced-motion. */
 
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 72px;
+.bleed {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-top: -32px; /* cancel main's padding — the sky starts at the very top */
+  margin-bottom: -96px;
 }
 
-/* ---------- hero ---------- */
+/* ---------- announcement strip ---------- */
+
+.announce {
+  padding: 7px 16px;
+  text-align: center;
+  font-size: 0.78rem;
+  background: #cfe6f8;
+  color: #123c66;
+}
+
+.announce a {
+  color: #123c66;
+  font-weight: 650;
+  text-decoration: underline;
+}
+
+/* ---------- sky hero ---------- */
 
 .hero {
-  padding: 72px 16px 0;
-  text-align: center;
-}
-
-.heroInner {
-  max-width: 820px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
+  text-align: center;
+  padding: 64px 16px 240px; /* deep bottom padding — the panel overlaps into it */
+  background:
+    radial-gradient(120% 70% at 50% -10%, #1d54b4 0%, #2e6ace 34%, #5f96e0 62%, #a9c9ee 84%, #dcebf8 100%);
 }
 
 .wordmark {
-  font-size: 1.3rem;
-  font-weight: 800;
-  letter-spacing: 0.42em;
-  margin-right: -0.42em; /* visually recenter tracked text */
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 1.6rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
 }
 
-.badges {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
+.logoGlyph {
+  font-size: 1.5rem;
+  line-height: 1;
 }
 
-.liveDot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green);
+/* credibility pill — dark translucent glass with a divider (reference-exact) */
+.credPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 9px 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(10, 30, 70, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.credDivider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.35);
 }
 
 .heroTitle {
-  margin: 6px 0 0;
-  font-size: clamp(2.6rem, 7vw, 4.6rem);
-  line-height: 1.04;
-  letter-spacing: -0.035em;
-  font-weight: 800;
-  color: var(--text);
+  margin: 30px 0 0;
+  color: #fff;
+  font-size: clamp(2.5rem, 5.4vw, 4rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  font-weight: 750;
+  text-shadow: 0 2px 30px rgba(15, 45, 110, 0.35);
 }
 
 .heroSub {
-  margin: 0;
-  max-width: 560px;
-  font-size: 1.05rem;
+  margin: 18px 0 0;
+  max-width: 520px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 1rem;
   line-height: 1.6;
-  color: var(--text-dim);
 }
 
-/* hero load-in: staggered fade-up */
+/* hero load-in stagger */
 .heroItem {
   opacity: 0;
   transform: translateY(14px);
@@ -88,149 +115,184 @@
   }
 }
 
-/* ---------- the liquid-glass CTA (Beta-Access style) ---------- */
+/* ---------- the liquid-glass CTA (Beta-Access replica) ---------- */
 
 .heroCta {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 8px;
-  padding: 16px 44px;
+  margin-top: 30px;
+  padding: 15px 52px;
   border-radius: 999px;
-  font-size: 1.12rem;
+  font-size: 1.08rem;
   font-weight: 700;
-  color: var(--text);
+  color: #0d3f7a;
   text-decoration: none;
-  border: 1px solid var(--glass-border);
+  /* glossy light-blue glass: bright top highlight over translucent blue */
+  border: 1px solid rgba(255, 255, 255, 0.65);
   background:
-    linear-gradient(180deg, var(--glass-highlight), transparent 42%),
-    color-mix(in srgb, var(--accent) 16%, var(--glass-tint));
-  backdrop-filter: blur(16px) saturate(1.6);
-  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(214, 236, 255, 0.55) 40%, rgba(158, 205, 250, 0.45) 100%);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
   box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    inset 0 -8px 18px -12px color-mix(in srgb, var(--accent) 45%, transparent),
-    0 18px 44px -18px color-mix(in srgb, var(--accent) 55%, var(--glass-shadow));
+    inset 0 2px 3px rgba(255, 255, 255, 0.9),
+    inset 0 -10px 20px -8px rgba(70, 130, 220, 0.55),
+    0 12px 36px -10px rgba(20, 60, 140, 0.55);
   overflow: hidden;
-  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.25, 1), box-shadow 220ms ease;
+  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.25, 1), box-shadow 240ms ease;
 }
 
-/* specular sheen — sweeps across on hover, like light over curved glass */
+/* specular sheen — sweeps across on hover like light over curved glass */
 .heroCta::after {
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -75%;
+  left: -80%;
   width: 55%;
-  background: linear-gradient(
-    105deg,
-    transparent 0%,
-    color-mix(in srgb, var(--glass-highlight) 85%, transparent) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
   transform: skewX(-18deg);
-  transition: left 480ms cubic-bezier(0.3, 0.6, 0.3, 1);
+  transition: left 520ms cubic-bezier(0.3, 0.6, 0.3, 1);
   pointer-events: none;
 }
 
 .heroCta:hover {
   text-decoration: none;
-  transform: scale(1.045);
+  transform: scale(1.05);
   box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    inset 0 -8px 18px -12px color-mix(in srgb, var(--accent) 55%, transparent),
-    0 24px 56px -18px color-mix(in srgb, var(--accent) 70%, var(--glass-shadow));
+    inset 0 2px 3px rgba(255, 255, 255, 0.95),
+    inset 0 -10px 22px -8px rgba(70, 130, 220, 0.65),
+    0 18px 48px -12px rgba(20, 60, 140, 0.65);
 }
 
 .heroCta:hover::after {
-  left: 120%;
+  left: 125%;
 }
 
 .heroCta:active {
   transform: scale(0.99);
 }
 
-/* ---------- hero pill nav ---------- */
+/* ---------- segmented glass nav pill ---------- */
 
 .pillNav {
   display: inline-flex;
-  gap: 4px;
-  margin-top: 10px;
+  gap: 2px;
+  margin-top: 26px;
   padding: 5px;
   border-radius: 999px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-tint);
-  backdrop-filter: blur(14px) saturate(1.5);
-  -webkit-backdrop-filter: blur(14px) saturate(1.5);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .pillNav a {
-  padding: 7px 18px;
+  padding: 8px 20px;
   border-radius: 999px;
   font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-dim);
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.85);
   text-decoration: none;
-  transition: color 120ms ease, background 120ms ease;
+  transition: color 140ms ease, background 140ms ease;
 }
 
 .pillNav a:hover {
-  color: var(--text);
+  color: #fff;
   text-decoration: none;
 }
 
 .pillNav a[data-primary="true"] {
-  color: var(--text);
-  background: var(--surface);
-  box-shadow: 0 2px 8px -3px var(--glass-shadow);
+  color: #113a66;
+  background: #fff;
 }
 
-/* ---------- live app preview ---------- */
+/* ---------- floating panel zone ---------- */
 
-.previewFrame {
-  max-width: 980px;
-  width: 100%;
+.panelZone {
+  position: relative;
+  z-index: 2;
+  margin-top: -190px; /* the overlap: panel rides up over the sky */
+  padding: 0 16px;
+}
+
+.panelFallback {
+  max-width: 1060px;
   margin: 0 auto;
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  background: var(--glass-tint);
-  backdrop-filter: blur(22px) saturate(1.55);
-  -webkit-backdrop-filter: blur(22px) saturate(1.55);
-  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 40px 90px -40px var(--glass-shadow);
-  overflow: hidden;
+  padding: 60px 20px;
+  text-align: center;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(13, 16, 22, 0.92);
+  color: #9aa3b5;
 }
 
-.previewChrome {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 18px;
-  border-bottom: 1px solid var(--glass-border);
+.panelFallback a {
+  color: #7dd3fc;
 }
 
-.chromeDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--border-strong);
-  opacity: 0.6;
+/* ---------- light lower sections ---------- */
+
+.lower {
+  background: linear-gradient(180deg, #dcebf8 0%, var(--bg) 26%);
+  padding: 72px 16px 40px;
 }
 
-.chromeLabel {
-  margin-left: 10px;
-  font-size: 0.72rem;
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-}
-
-.previewGrid {
+.featureRow {
+  max-width: 1060px;
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
-  padding: 18px;
+}
+
+.featureCard {
+  padding: 24px 24px 22px;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: var(--glass-tint);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 20px 50px -32px var(--glass-shadow);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.featureCard:hover {
+  transform: translateY(-4px);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 24px 56px -28px var(--glass-shadow);
+}
+
+.featureCard h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.featureCard p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+/* ---------- live markets strip ---------- */
+
+.marketsStrip {
+  max-width: 1060px;
+  margin: 56px auto 0;
+}
+
+.stripTitle {
+  margin: 0 0 16px;
+  text-align: center;
+  font-size: clamp(1.4rem, 3vw, 1.9rem);
+  letter-spacing: -0.02em;
+}
+
+.stripGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
 }
 
 .previewCard {
@@ -240,16 +302,17 @@
   padding: 16px 18px;
   border: 1px solid var(--glass-border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  background: var(--glass-tint);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
   color: var(--text);
   text-decoration: none;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
 .previewCard:hover {
   text-decoration: none;
   transform: translateY(-3px);
-  border-color: var(--border-strong);
   box-shadow: 0 16px 36px -18px var(--glass-shadow);
 }
 
@@ -270,7 +333,6 @@
   gap: 8px;
   font-size: 0.85rem;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 
 .pYes {
@@ -296,156 +358,39 @@
   color: var(--text-faint);
 }
 
-.previewStats {
+.stripStats {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px 28px;
-  padding: 14px 20px;
-  border-top: 1px solid var(--glass-border);
-  font-size: 0.82rem;
+  margin-top: 18px;
+  font-size: 0.84rem;
   color: var(--text-dim);
 }
 
-.previewStats strong {
+.stripStats strong {
   font-family: var(--font-mono);
   color: var(--text);
 }
 
-/* ---------- sections ---------- */
-
-.section {
-  max-width: 980px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 16px;
-}
-
-.sectionTitle {
-  margin: 0 0 6px;
-  text-align: center;
-  font-size: clamp(1.6rem, 3.4vw, 2.2rem);
-  letter-spacing: -0.025em;
-  font-weight: 750;
-}
-
-.sectionSub {
-  margin: 0 0 8px;
-  text-align: center;
-  color: var(--text-dim);
-  font-size: 0.95rem;
-}
-
-/* ---------- feature grid ---------- */
-
-.featureGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
-  margin-top: 22px;
-}
-
-.featureCard {
-  height: 100%;
-  padding: 22px 22px 20px;
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  background: var(--glass-tint);
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
-  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 20px 50px -32px var(--glass-shadow);
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
-}
-
-.featureCard:hover {
-  transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 24px 56px -28px color-mix(in srgb, var(--accent) 30%, var(--glass-shadow));
-}
-
-.featureIcon {
-  display: inline-block;
-  font-size: 1.5rem;
-  margin-bottom: 10px;
-}
-
-.featureCard h3 {
-  margin: 0 0 6px;
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.featureCard p {
-  margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.55;
-  color: var(--text-dim);
-}
-
-/* ---------- how it works ---------- */
-
-.howGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
-  margin-top: 22px;
-}
-
-.howCard {
-  height: 100%;
-  padding: 24px 22px;
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface) 60%, transparent);
-  transition: transform 180ms ease, box-shadow 180ms ease;
-}
-
-.howCard:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 20px 44px -26px var(--glass-shadow);
-}
-
-.howNum {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin-bottom: 12px;
-  border-radius: 50%;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-tint);
-  font-family: var(--font-mono);
-  font-weight: 700;
-}
-
-.howCard h3 {
-  margin: 0 0 6px;
-  font-size: 1rem;
-}
-
-.howCard p {
-  margin: 0;
-  font-size: 0.85rem;
-  line-height: 1.55;
-  color: var(--text-dim);
-}
-
-.bottomCta {
-  display: flex;
-  justify-content: center;
-  margin-top: 34px;
-}
-
 /* ---------- footer ---------- */
 
-.footNote {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 0 16px 28px;
+.footer {
+  max-width: 1060px;
+  margin: 56px auto 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--glass-border);
   text-align: center;
   font-size: 0.8rem;
+}
+
+.footerLinks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 24px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
 }
 
 /* ---------- motion safety ---------- */
@@ -459,8 +404,16 @@
   .heroCta,
   .heroCta::after,
   .previewCard,
-  .featureCard,
-  .howCard {
+  .featureCard {
     transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding-bottom: 200px;
+  }
+  .panelZone {
+    margin-top: -160px;
   }
 }

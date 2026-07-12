@@ -1,0 +1,474 @@
+/* The dark floating app panel — deliberately fixed dark regardless of the
+   site theme: it's a "device" showing the product, framed by the sky hero. */
+
+.panel {
+  --p-bg: #0d1016;
+  --p-card: #151a23;
+  --p-border: rgba(255, 255, 255, 0.09);
+  --p-text: #eef1f7;
+  --p-dim: #9aa3b5;
+  --p-green: #4ade80;
+  --p-red: #f87171;
+
+  max-width: 1060px;
+  margin: 0 auto;
+  border-radius: 22px;
+  border: 1px solid var(--p-border);
+  background: var(--p-bg);
+  color: var(--p-text);
+  box-shadow: 0 60px 140px -40px rgba(10, 20, 45, 0.55), 0 24px 60px -30px rgba(10, 20, 45, 0.5);
+  overflow: hidden;
+
+  opacity: 0;
+  transform: translateY(44px) scale(0.98);
+  transition: opacity 700ms cubic-bezier(0.2, 0.7, 0.25, 1), transform 700ms cubic-bezier(0.2, 0.7, 0.25, 1);
+}
+
+.panel.revealed {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ---------- app top bar ---------- */
+
+.appBar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--p-border);
+}
+
+.appLogo {
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  font-size: 0.92rem;
+}
+
+.appNav {
+  display: flex;
+  gap: 4px;
+  font-size: 0.84rem;
+  color: var(--p-dim);
+}
+
+.appNav span {
+  padding: 5px 12px;
+  border-radius: 8px;
+}
+
+.appNav span[data-active="true"] {
+  color: var(--p-text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.appBarRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.portfolioChip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.chipLabel {
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--p-dim);
+}
+
+.launchBtn {
+  padding: 7px 18px;
+  border-radius: 9px;
+  background: #fff;
+  color: #10131a;
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.launchBtn:hover {
+  text-decoration: none;
+  filter: brightness(0.92);
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #22d3ee, #6366f1);
+}
+
+.demoNote {
+  padding: 6px 22px;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--p-dim);
+  border-bottom: 1px solid var(--p-border);
+}
+
+/* ---------- body: chart + order panel ---------- */
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: 18px;
+  padding: 20px 22px;
+}
+
+@media (max-width: 860px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chartSide {
+  min-width: 0;
+}
+
+.marketHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.fixture {
+  font-size: 0.78rem;
+  color: var(--p-dim);
+}
+
+.title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.bigPrice {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.delta {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--p-red);
+}
+
+.delta[data-up="true"] {
+  color: var(--p-green);
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.grid {
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 1;
+}
+
+.gridLabel {
+  fill: var(--p-dim);
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+
+.lineYes,
+.lineNo {
+  fill: none;
+  stroke-width: 2;
+  stroke-dasharray: 1200;
+  stroke-dashoffset: 1200;
+}
+
+.lineYes {
+  stroke: var(--p-green);
+}
+
+.lineNo {
+  stroke: var(--p-red);
+  opacity: 0.55;
+}
+
+.draw {
+  animation: drawLine 1400ms cubic-bezier(0.3, 0.6, 0.3, 1) forwards 200ms;
+}
+
+@keyframes drawLine {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lineYes,
+  .lineNo {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+  .draw {
+    animation: none;
+  }
+}
+
+.timeframes {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: var(--p-dim);
+}
+
+.timeframes span {
+  padding: 3px 10px;
+  border-radius: 7px;
+}
+
+.timeframes span[data-active="true"] {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--p-text);
+}
+
+.chartCaption {
+  margin: 10px 0 0;
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  color: var(--p-dim);
+}
+
+/* ---------- order panel ---------- */
+
+.orderSide {
+  border: 1px solid var(--p-border);
+  border-radius: 16px;
+  background: var(--p-card);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sideToggle {
+  display: flex;
+  gap: 8px;
+}
+
+.sideToggle button {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--p-dim);
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.sideToggle button[data-kind="yes"][data-active="true"] {
+  background: var(--p-green);
+  color: #06210f;
+}
+
+.sideToggle button[data-kind="no"][data-active="true"] {
+  background: rgba(248, 113, 113, 0.18);
+  color: var(--p-red);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.buySellTabs {
+  display: flex;
+  gap: 14px;
+  font-size: 0.8rem;
+  color: var(--p-dim);
+  border-bottom: 1px solid var(--p-border);
+  padding-bottom: 8px;
+}
+
+.buySellTabs span[data-active="true"] {
+  color: var(--p-text);
+  font-weight: 700;
+}
+
+.amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.amountLabel {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--p-dim);
+}
+
+.amountValue {
+  font-family: var(--font-mono);
+  font-size: 2.2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  font-size: 0.9rem;
+  color: var(--p-dim);
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.chips span {
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--p-border);
+  font-size: 0.74rem;
+  font-family: var(--font-mono);
+  color: var(--p-dim);
+}
+
+.buyBtn {
+  display: block;
+  text-align: center;
+  padding: 12px 0;
+  border-radius: 12px;
+  background: #fff;
+  color: #10131a;
+  font-weight: 800;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: filter 140ms ease, transform 140ms ease;
+}
+
+.buyBtn:hover {
+  text-decoration: none;
+  filter: brightness(0.94);
+  transform: translateY(-1px);
+}
+
+.calc {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.calc div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.84rem;
+}
+
+.calc dt {
+  color: var(--p-dim);
+}
+
+.calc dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.toWin {
+  color: var(--p-green);
+}
+
+.orderCaption {
+  margin: 0;
+  font-size: 0.64rem;
+  font-family: var(--font-mono);
+  color: var(--p-dim);
+}
+
+/* ---------- outcomes rows ---------- */
+
+.outcomes {
+  border-top: 1px solid var(--p-border);
+  padding: 14px 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.outcomeRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--p-border);
+  border-radius: 12px;
+  background: var(--p-card);
+}
+
+.outcomeName {
+  font-weight: 700;
+  width: 46px;
+}
+
+.outcomePrice {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+.oYes,
+.oNo {
+  margin-left: auto;
+  padding: 7px 20px;
+  border-radius: 9px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.oYes {
+  background: rgba(74, 222, 128, 0.16);
+  color: var(--p-green);
+}
+
+.oNo {
+  background: rgba(248, 113, 113, 0.14);
+  color: var(--p-red);
+}
+
+.oYes:hover,
+.oNo:hover {
+  text-decoration: none;
+  filter: brightness(1.2);
+}

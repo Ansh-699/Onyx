@@ -24,6 +24,9 @@ export function Nav() {
   const [vaultOpen, setVaultOpen] = useState(false);
   const [faucetOpen, setFaucetOpen] = useState(false);
   const usdc = useWalletUsdc(connected ? publicKey : null);
+  // The landing is a full-bleed marketing surface (its own wordmark, its own
+  // nav pill) — the app chrome would break the hero, so it opts out.
+  if (pathname === "/") return null;
   return (
     <header className={styles.nav}>
       <div className={styles.brand}>
