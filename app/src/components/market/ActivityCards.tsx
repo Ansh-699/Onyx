@@ -31,9 +31,20 @@ function timeAgo(t: number): string {
 }
 
 export function PriceHistoryCard({ marketPda }: { marketPda: string }) {
-  const { data } = useAmmPriceHistory([marketPda]);
+  const { data, isPending } = useAmmPriceHistory([marketPda]);
   const series = data?.[marketPda];
   const points = series?.points ?? [];
+  // Skeleton while the first fetch is in flight — same box as the loaded
+  // card so the swap shifts nothing.
+  if (isPending) {
+    return (
+      <div className={`card ${styles.wrap}`} aria-hidden>
+        <div className="skeleton" style={{ height: 14, width: 180 }} />
+        <div className="skeleton" style={{ height: 34, width: 90, marginTop: 8 }} />
+        <div className="skeleton" style={{ height: 150, marginTop: 12 }} />
+      </div>
+    );
+  }
   if (points.length < 2) return null;
 
   const t0 = points[0]!.t;
@@ -81,12 +92,22 @@ export function PriceHistoryCard({ marketPda }: { marketPda: string }) {
 }
 
 export function RecentTradesCard({ marketPda }: { marketPda: string }) {
-  const { data } = useAmmPriceHistory([marketPda]);
+  const { data, isPending } = useAmmPriceHistory([marketPda]);
   // ER-delegated market: its swaps live on the ER ledger, so tx links must
   // point the explorer at the ER RPC (a plain devnet link shows Not Found).
   const routed = useRoutedAmmPool(marketPda);
   const txRpc = routed.isDelegated ? routed.connection.rpcEndpoint : null;
   const trades = data?.[marketPda]?.trades ?? [];
+  if (isPending) {
+    return (
+      <div className={`card ${styles.wrap}`} aria-hidden>
+        <div className="skeleton" style={{ height: 14, width: 240 }} />
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="skeleton" style={{ height: 22, marginTop: 10 }} />
+        ))}
+      </div>
+    );
+  }
   if (trades.length === 0) return null;
 
   return (

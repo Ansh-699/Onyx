@@ -19,6 +19,9 @@
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 800;
   letter-spacing: 0.18em;
   font-size: 1.15rem;
@@ -118,4 +121,32 @@
   font-family: var(--font-mono);
   font-size: 0.74rem;
   font-weight: 700;
+}
+
+/* Theme-paired brand gems: :root defaults to dark (light gem shows);
+   data-theme="light" flips to the dark gem for contrast. */
+.gemOnLight,
+.gemOnDark {
+  border-radius: 4px;
+}
+
+.gemOnLight {
+  display: none;
+}
+
+:global([data-theme="light"]) .gemOnLight {
+  display: inline-block;
+}
+
+:global([data-theme="light"]) .gemOnDark {
+  display: none;
+}
+
+@media (prefers-color-scheme: light) {
+  :global(:root:not([data-theme])) .gemOnLight {
+    display: inline-block;
+  }
+  :global(:root:not([data-theme])) .gemOnDark {
+    display: none;
+  }
 }

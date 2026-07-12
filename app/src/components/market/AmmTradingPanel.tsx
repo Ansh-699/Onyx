@@ -65,7 +65,6 @@ import {
 import { FundingModal } from "@/components/FundingModal";
 import { quoteBuy, quoteSell, spotPriceScaled, minOutForTolerance, buyImpactBps } from "@/lib/ammMath";
 import { WalletButton } from "@/components/WalletButton";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { fmtUsdc } from "@/components/market/format";
 import styles from "./ErTradingPanel.module.css";
 
@@ -445,7 +444,7 @@ export function AmmTradingPanel({
             </label>
           </div>
           <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
-            <LiquidButton size="lg" type="button" onClick={onStartSession} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-session-btn">
+            <button className="glass-action" type="button" onClick={onStartSession} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-session-btn" style={{ maxWidth: 280 }}>
               {busy ? (
                 <>
                   <span className={styles.spinner} aria-hidden /> Working…
@@ -453,7 +452,7 @@ export function AmmTradingPanel({
               ) : (
                 "Enable 1-click trading"
               )}
-            </LiquidButton>
+            </button>
             <button className="button" data-variant="ghost" type="button" onClick={onDeposit} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-deposit-btn" style={{ fontSize: "0.8rem" }}>
               or add funds &amp; approve each trade
             </button>
@@ -563,7 +562,7 @@ export function AmmTradingPanel({
             </div>
           )}
 
-          <LiquidButton size="lg" type="submit" disabled={!!busy || !quote || insufficient} data-testid="amm-swap-btn">
+          <button className="glass-action" type="submit" disabled={!!busy || !quote || insufficient} data-testid="amm-swap-btn">
             {busy ? (
               <>
                 <span className={styles.spinner} aria-hidden /> {direction === SWAP_BUY ? "Buying…" : "Selling…"}
@@ -573,7 +572,7 @@ export function AmmTradingPanel({
             ) : (
               `${direction === SWAP_BUY ? "Buy" : "Sell"} ${side === SIDE_A ? "Yes" : "No"}${isDelegated ? " · instant" : ""}`
             )}
-          </LiquidButton>
+          </button>
           {busy && <p className={`muted ${styles.blurb}`}>{busy}</p>}
           {!busy && insufficient && (
             <p className={`muted ${styles.blurb}`}>

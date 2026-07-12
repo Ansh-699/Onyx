@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
+import gemDark from "@/assets/onyx-gem.png";
+import gemLight from "@/assets/onyx-gem-light.png";
 import { useWalletUsdc } from "@/lib/hooks";
 import { WalletButton } from "./WalletButton";
 import { ThemeToggle } from "./ThemeToggle";
@@ -31,6 +34,10 @@ export function Nav() {
     <header className={styles.nav}>
       <div className={styles.brand}>
         <Link href="/" className={styles.logo}>
+          {/* theme-paired gems: dark gem on the light theme, light gem on
+              dark — CSS swaps them from the root data-theme attribute */}
+          <Image src={gemDark} alt="" width={22} height={22} className={styles.gemOnLight} />
+          <Image src={gemLight} alt="" width={22} height={22} className={styles.gemOnDark} />
           ONYX
         </Link>
         <span className={styles.badge}>devnet</span>

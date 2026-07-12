@@ -42,7 +42,7 @@
   align-items: center;
   text-align: center;
   /* a modest band of sky, then compact vertical rhythm (reference-tight) */
-  padding: 44px 16px 36px;
+  padding: 16px 16px 12px;
 }
 
 .wordmark {
@@ -179,8 +179,7 @@
   right: 10%;
   bottom: -14px;
   height: 16px;
-  background: radial-gradient(ellipse at center, rgba(10, 40, 90, 0.45), transparent 70%);
-  filter: blur(10px);
+  background: radial-gradient(ellipse at center, rgba(10, 40, 90, 0.45) 0%, transparent 60%);
   opacity: 0.6;
   transform: translateY(6px) scaleX(0.9);
   transition: opacity 300ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -290,7 +289,7 @@
 .panelZone {
   position: relative;
   z-index: 2;
-  padding: 12px 16px 0;
+  padding: 4px 16px 0;
 }
 
 .panelFallback {

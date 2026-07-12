@@ -84,7 +84,7 @@
 
   --text: #14161f;
   --text-dim: #565b70;
-  --text-faint: #8a8fa3;
+  --text-faint: #71768a;
 
   --accent: #0891b2;
   --accent-strong: #0e7490;
@@ -122,7 +122,7 @@
     --border-strong: #c7cbdb;
     --text: #14161f;
     --text-dim: #565b70;
-    --text-faint: #8a8fa3;
+    --text-faint: #71768a;
     --accent: #0891b2;
     --accent-strong: #0e7490;
     --accent-dim: rgba(8, 145, 178, 0.08);
@@ -261,7 +261,7 @@ h3 {
   text-decoration: none;
 }
 .button:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 .button:disabled {
   opacity: 0.45;
@@ -333,6 +333,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 input::placeholder {
   color: var(--text-faint);
@@ -401,6 +402,33 @@ tr:last-child td {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
+}
+/* staggered entry for cards in grids/rows */
+.grid-cards > *, .rows > * {
+  animation: cardIn 400ms cubic-bezier(0.2, 0.7, 0.25, 1) backwards;
+}
+.grid-cards > *:nth-child(1), .rows > *:nth-child(1) { animation-delay: 0ms; }
+.grid-cards > *:nth-child(2), .rows > *:nth-child(2) { animation-delay: 40ms; }
+.grid-cards > *:nth-child(3), .rows > *:nth-child(3) { animation-delay: 80ms; }
+.grid-cards > *:nth-child(4), .rows > *:nth-child(4) { animation-delay: 120ms; }
+.grid-cards > *:nth-child(5), .rows > *:nth-child(5) { animation-delay: 160ms; }
+.grid-cards > *:nth-child(6), .rows > *:nth-child(6) { animation-delay: 200ms; }
+.grid-cards > *:nth-child(n+7), .rows > *:nth-child(n+7) { animation-delay: 240ms; }
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grid-cards > *, .rows > * {
+    animation: none;
+  }
 }
 
 /* value transitions — updated numbers fade, never flash */
@@ -479,5 +507,60 @@ tr:last-child td {
     opacity: 1;
     transform: none;
     transition: none;
+  }
+}
+
+/* Glass action button — the panel's primary CTA. Replaces the misaligned
+   LiquidButton wrapper (its decorative layers rendered offset from wide
+   buttons); same glass language as the landing CTA, app-scaled. */
+.glass-action {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 45%),
+    color-mix(in srgb, var(--accent) 20%, var(--glass-tint));
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 8px 22px -10px color-mix(in srgb, var(--accent) 50%, var(--glass-shadow));
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease, filter 200ms ease;
+}
+
+.glass-action:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.04);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 14px 30px -12px color-mix(in srgb, var(--accent) 60%, var(--glass-shadow));
+}
+
+.glass-action:active:not(:disabled) {
+  transform: translateY(0) scale(0.995);
+}
+
+.glass-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-action {
+    transition: none;
+  }
+  .glass-action:hover:not(:disabled) {
+    transform: none;
   }
 }

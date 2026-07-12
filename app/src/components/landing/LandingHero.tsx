@@ -18,6 +18,7 @@ import logoGem from "@/assets/onyx-gem-light.png";
 import solanaLogo from "@/assets/Solana-Round-Logo-PNG.png";
 import magicblockLogo from "@/assets/magicblock.jpg";
 import { TradeScreen, type DemoData } from "./TradeDemo";
+import { ChromeCta } from "./ChromeCta";
 import demoStyles from "./TradeDemo.module.css";
 import styles from "@/app/landing.module.css";
 
@@ -252,9 +253,7 @@ export function LandingHero({
         </p>
 
         <div className={`${styles.heroItem} ${styles.d4}`}>
-          <Link href="/markets" className={styles.heroCta}>
-            <span>Launch App</span>
-          </Link>
+          <ChromeCta href="/markets" label="Launch App" />
         </div>
 
         {/* in-panel preview tabs — real tablist, zero navigation */}
