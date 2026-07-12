@@ -7,6 +7,8 @@
 // itself on this route (Nav.tsx) — the landing brings its own chrome.
 
 import Link from "next/link";
+import Image from "next/image";
+import gemLight from "@/assets/onyx-gem-light.png";
 import {
   listMarkets,
   getAmmPoolsForMarkets,
@@ -230,27 +232,79 @@ export default async function LandingPage() {
           </Reveal>
         )}
 
-        <footer className={styles.footer}>
-          <div className={styles.footerLinks}>
-            <a href="https://github.com/Ansh-699/Onyx" target="_blank" rel="noreferrer">
-              GitHub ↗
-            </a>
-            <a
-              href="https://explorer.solana.com/address/4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB?cluster=devnet"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Program on Explorer ↗
-            </a>
-            <Link href="/how-to-trade">How to trade</Link>
-            <Link href="/demo/mev">Why sealed markets?</Link>
+      </div>
+
+      {/* ---- dark mega-footer (Space-style): brand, link columns, © line,
+             giant clipped watermark ---- */}
+      <footer className={styles.mega}>
+        <div className={styles.megaInner}>
+          <div className={styles.megaBrand}>
+            <Image src={gemLight} alt="" width={30} height={30} className={styles.megaGem} />
+            ONYX
           </div>
-          <p className="muted">
-            Devnet build for the TxODDS World Cup Hackathon. Escrow uses test-USDC — not real funds. Every
+
+          <div className={styles.megaCols}>
+            <div>
+              <span className={styles.megaColTitle}>Socials</span>
+              <a href="https://github.com/Ansh-699" target="_blank" rel="noopener noreferrer">
+                Github
+              </a>
+              <a href="https://github.com/Ansh-699/Onyx" target="_blank" rel="noopener noreferrer">
+                Repository
+              </a>
+            </div>
+            <div>
+              <span className={styles.megaColTitle}>Quick links</span>
+              <Link href="/markets">Markets</Link>
+              <Link href="/leaderboard">Leaderboard</Link>
+              <Link href="/portfolio">Portfolio</Link>
+              <Link href="/create">Create a market</Link>
+            </div>
+            <div>
+              <span className={styles.megaColTitle}>Documents</span>
+              <Link href="/how-to-trade">How to trade</Link>
+              <Link href="/demo/mev">Why sealed markets?</Link>
+              <a href="https://github.com/Ansh-699/Onyx/blob/master/SECURITY_AUDIT.md" target="_blank" rel="noopener noreferrer">
+                Security audit
+              </a>
+              <a href="https://github.com/Ansh-699/Onyx/blob/master/BUILD_STATE.md" target="_blank" rel="noopener noreferrer">
+                Build log
+              </a>
+            </div>
+            <div>
+              <span className={styles.megaColTitle}>Resources</span>
+              <a
+                href="https://explorer.solana.com/address/4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB?cluster=devnet"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Program on Explorer
+              </a>
+              <a href="https://www.magicblock.gg" target="_blank" rel="noopener noreferrer">
+                MagicBlock
+              </a>
+              <a href="https://www.txodds.com" target="_blank" rel="noopener noreferrer">
+                TxODDS · TxLINE
+              </a>
+              <a href="https://solana.com" target="_blank" rel="noopener noreferrer">
+                Solana
+              </a>
+            </div>
+          </div>
+
+          <div className={styles.megaRule} />
+          <p className={styles.megaCopy}>
+            © 2026 ONYX. Devnet build for the TxODDS World Cup Hackathon — test-USDC, not real funds. Every
             settlement is checkable on public devnet RPC.
           </p>
-        </footer>
-      </div>
+        </div>
+
+        {/* giant clipped watermark */}
+        <div className={styles.megaMark} aria-hidden>
+          <Image src={gemLight} alt="" className={styles.megaMarkGem} />
+          <span className={styles.megaMarkText}>ONYX</span>
+        </div>
+      </footer>
     </div>
   );
 }

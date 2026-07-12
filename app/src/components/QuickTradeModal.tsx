@@ -179,7 +179,13 @@ export function QuickTradeModal({ target, onClose }: { target: QuickTradeTarget 
                   </span>
                   {quote && amountIn && (
                     <span className={styles.quoteNote}>
-                      ≈ {fmt(quote.out)} tokens · min {fmt(quote.minOut)} (enforced on-chain)
+                      ≈ {fmt(quote.out)} shares · min {fmt(quote.minOut)} (enforced on-chain)
+                      <br />
+                      <span style={{ color: "var(--green)", fontWeight: 650 }}>
+                        to win ≈{fmt(quote.out)} tUSDC
+                        {quote.out > amountIn && <> (+{fmt(quote.out - amountIn)} profit)</>}
+                      </span>{" "}
+                      if {target.side === SIDE_A ? "Yes" : "No"} wins — shares redeem 1:1
                     </span>
                   )}
                 </div>

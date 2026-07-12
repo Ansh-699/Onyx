@@ -542,3 +542,113 @@
 .ctaInner:hover {
   text-decoration: none;
 }
+
+/* ---------- dark mega-footer (Space-style) ---------- */
+
+.mega {
+  position: relative;
+  background: #0a0a0c;
+  color: #e8e8ec;
+  padding: 64px 24px 0;
+  overflow: hidden;
+}
+
+.megaInner {
+  position: relative;
+  z-index: 1;
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+.megaBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  margin-bottom: 56px;
+}
+
+.megaGem {
+  border-radius: 6px;
+}
+
+.megaCols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 32px;
+}
+
+.megaCols > div {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.megaColTitle {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6f6f7a;
+  margin-bottom: 4px;
+}
+
+.megaCols a {
+  color: #d5d5dd;
+  font-size: 1.02rem;
+  text-decoration: none;
+  transition: color 120ms ease;
+  width: fit-content;
+}
+
+.megaCols a:hover {
+  color: #fff;
+  text-decoration: none;
+}
+
+.megaRule {
+  margin-top: 72px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.megaCopy {
+  margin: 0;
+  padding: 18px 0 8px;
+  font-size: 0.8rem;
+  color: #6f6f7a;
+}
+
+/* giant clipped watermark — hatched, half off the bottom edge */
+.megaMark {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3vw;
+  margin-top: 24px;
+  height: clamp(120px, 18vw, 240px);
+  overflow: hidden;
+  opacity: 0.16;
+  pointer-events: none;
+  user-select: none;
+  /* diagonal hatch like the reference */
+  -webkit-mask-image: repeating-linear-gradient(115deg, #000 0 7px, transparent 7px 10px);
+  mask-image: repeating-linear-gradient(115deg, #000 0 7px, transparent 7px 10px);
+}
+
+.megaMarkGem {
+  width: clamp(120px, 16vw, 220px);
+  height: auto;
+  transform: translateY(28%);
+}
+
+.megaMarkText {
+  font-size: clamp(120px, 20vw, 260px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: #fff;
+  transform: translateY(30%);
+}

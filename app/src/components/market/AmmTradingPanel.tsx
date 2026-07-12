@@ -546,7 +546,7 @@ export function AmmTradingPanel({
               <span>
                 {direction === SWAP_BUY ? (
                   <>
-                    ≈ <strong>{fmtUsdc(quote.out)}</strong> {side === SIDE_A ? "A" : "B"} tokens
+                    ≈ <strong>{fmtUsdc(quote.out)}</strong> {side === SIDE_A ? "YES" : "NO"} shares
                     {quote.impactBps > 0 && ` · impact ${(quote.impactBps / 100).toFixed(2)}%`}
                   </>
                 ) : (
@@ -558,6 +558,17 @@ export function AmmTradingPanel({
               </span>
               <span title="Encoded into the transaction as min_out — the program reverts with SlippageExceeded if the fill would be worse. On-chain enforcement, not a UI promise.">
                 min received: <strong data-testid="amm-minout">{fmtUsdc(quote.minOut)}</strong>
+              </span>
+            </div>
+          )}
+          {quote && direction === SWAP_BUY && amountIn && (
+            <div className={styles.availRow} data-testid="amm-towin" title="Winning shares redeem 1:1 for tUSDC at settlement — this is your payout if this side wins, and the profit over what you're spending now. If the other side wins, these shares pay 0.">
+              <span>
+                To win: <strong style={{ color: "var(--green)" }}>≈{fmtUsdc(quote.out)} tUSDC</strong>
+                {quote.out > amountIn && <> (+{fmtUsdc(quote.out - amountIn)} profit)</>}
+              </span>
+              <span className="muted" style={{ fontSize: "0.72rem" }}>
+                if {side === SIDE_A ? "YES" : "NO"} wins · shares redeem 1:1
               </span>
             </div>
           )}

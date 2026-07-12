@@ -27,7 +27,9 @@ export default async function ReceiptPage({
   return (
     <>
       <p>
-        <Link href={`/market/${pda}`}>← Market</Link>
+        <Link href={`/market/${pda}`} className="back-btn" aria-label="Back to market">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></svg>
+        </Link>
       </p>
       <h1>Verifiable receipt</h1>
       <p className="muted">
