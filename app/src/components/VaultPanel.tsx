@@ -79,7 +79,14 @@ export function VaultPanel({ open, onClose }: { open: boolean; onClose: () => vo
             </p>
 
             <div className={styles.action} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" className="button" onClick={() => setFundingOpen(true)}>
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  onClose(); // one modal at a time — vault hands off to funding
+                  setFundingOpen(true);
+                }}
+              >
                 Add funds
               </button>
               <Link href="/portfolio" className="button" data-variant="ghost" onClick={onClose}>

@@ -299,6 +299,16 @@ function MarketCard({
         </div>
       )}
 
+      {/* your real on-chain holdings — ABOVE the Yes/No row so every card's
+          buttons align on the same baseline regardless of holdings */}
+      {myPosition && (myPosition.tokensA > 0n || myPosition.tokensB > 0n) && (
+        <div className={styles.myPosition} data-side={myPosition.tokensA >= myPosition.tokensB ? "yes" : "no"}>
+          You hold{myPosition.tokensA > 0n && <> {formatVolume(Number(myPosition.tokensA) / 1e6)} YES</>}
+          {myPosition.tokensA > 0n && myPosition.tokensB > 0n && " ·"}
+          {myPosition.tokensB > 0n && <> {formatVolume(Number(myPosition.tokensB) / 1e6)} NO</>}
+        </div>
+      )}
+
       {/* Yes/No are REAL buy buttons: click opens the quick-trade modal
           (stopPropagation so the card link doesn't navigate). */}
       <div className={styles.yesNoRow} aria-hidden={yesCents === null}>
@@ -332,15 +342,6 @@ function MarketCard({
           <strong>{noCents !== null ? `${noCents}¢` : "—"}</strong>
         </button>
       </div>
-
-      {/* your real on-chain holdings on this market */}
-      {myPosition && (myPosition.tokensA > 0n || myPosition.tokensB > 0n) && (
-        <div className={styles.myPosition} data-side={myPosition.tokensA >= myPosition.tokensB ? "yes" : "no"}>
-          You hold{myPosition.tokensA > 0n && <> {formatVolume(Number(myPosition.tokensA) / 1e6)} YES</>}
-          {myPosition.tokensA > 0n && myPosition.tokensB > 0n && " ·"}
-          {myPosition.tokensB > 0n && <> {formatVolume(Number(myPosition.tokensB) / 1e6)} NO</>}
-        </div>
-      )}
 
       <div className={styles.cardBottom}>
         <div className={styles.cardBottomLeft}>

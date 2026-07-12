@@ -1,10 +1,15 @@
 "use client";
 
 // Minimal overlay modal — glass card centered over a dimmed backdrop.
-// Closes on backdrop click and Escape. No portal library, no focus-trap
-// dependency: this is a devnet demo, keep it lean but keyboard-usable.
+// Closes on backdrop click and Escape. Rendered through a portal to
+// document.body: an ancestor with backdrop-filter/transform (the glass nav,
+// glass cards) becomes the containing block for position:fixed, which
+// pinned the Vault modal to the nav and clipped it — the portal escapes
+// every such ancestor. No focus-trap dependency: devnet demo, keep it lean
+// but keyboard-usable.
 
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import styles from "./Modal.module.css";
 
 export function Modal({
@@ -32,7 +37,7 @@ export function Modal({
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  return createPortal(
     <div className={styles.backdrop} onClick={onClose} role="presentation">
       <div className={styles.card} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className={styles.head}>
@@ -43,6 +48,7 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

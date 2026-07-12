@@ -474,13 +474,20 @@
 
 /* ---------- "You hold" banner (your real on-chain position) ---------- */
 
+/* Sits ABOVE the Yes/No row: absorbs the flexible space (margin-top: auto)
+   so the buttons keep one shared baseline across all cards; the sibling
+   selector cancels the row's own auto margin when the banner is present. */
 .myPosition {
-  margin-top: 2px;
+  margin-top: auto;
   padding: 5px 10px;
   border-radius: var(--radius-sm);
   font-size: 0.76rem;
   font-weight: 600;
   border: 1px solid var(--glass-border);
+}
+
+.myPosition + .yesNoRow {
+  margin-top: 0;
 }
 
 .myPosition[data-side="yes"] {
