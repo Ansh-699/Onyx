@@ -22,7 +22,8 @@ import { getLiveFixtures } from "@/lib/txlineFixtures";
 import { flagFor } from "@/lib/flags";
 import { readHistory } from "@/lib/priceHistory";
 import { Reveal } from "@/components/Reveal";
-import { TradeDemo, type DemoData } from "@/components/landing/TradeDemo";
+import type { DemoData } from "@/components/landing/TradeDemo";
+import { LandingHero } from "@/components/landing/LandingHero";
 import styles from "./landing.module.css";
 
 export const dynamic = "force-dynamic";
@@ -138,56 +139,10 @@ export default async function LandingPage() {
         </a>
       </div>
 
-      {/* ---- sky hero ---- */}
-      <section className={styles.hero}>
-        <div className={`${styles.heroItem} ${styles.d0}`}>
-          <span className={styles.wordmark}>
-            <span className={styles.logoGlyph} aria-hidden>◈</span> ONYX
-          </span>
-        </div>
-
-        <div className={`${styles.credPill} ${styles.heroItem} ${styles.d1}`}>
-          <span>Built on Solana</span>
-          <span className={styles.credDivider} aria-hidden />
-          <span>Powered by MagicBlock</span>
-        </div>
-
-        <h1 className={`${styles.heroTitle} ${styles.heroItem} ${styles.d2}`}>
-          Prediction markets
-          <br />
-          at flash speed.
-        </h1>
-
-        <p className={`${styles.heroSub} ${styles.heroItem} ${styles.d3}`}>
-          Sub-second trades on Ephemeral Rollups. Every market settles on-chain to zero. No custodian, no trust.
-        </p>
-
-        <div className={`${styles.heroItem} ${styles.d4}`}>
-          <Link href="/markets" className={styles.heroCta}>
-            <span>Launch App</span>
-          </Link>
-        </div>
-
-        <nav className={`${styles.pillNav} ${styles.heroItem} ${styles.d5}`} aria-label="Sections">
-          <Link href="/markets" data-primary="true">Markets</Link>
-          <Link href="/markets">Trade</Link>
-          <Link href="/portfolio">Portfolio</Link>
-          <Link href="/how-to-trade">Docs</Link>
-        </nav>
-      </section>
-
-      {/* ---- floating dark app panel (overlaps the hero) ---- */}
-      <section className={styles.panelZone}>
-        {live?.demo ? (
-          <TradeDemo data={live.demo} />
-        ) : (
-          <div className={styles.panelFallback}>
-            <p>
-              Live demo loads from devnet — <Link href="/markets">open the app →</Link>
-            </p>
-          </div>
-        )}
-      </section>
+      {/* ---- sky hero + tabbed preview panel (client component) ---- */}
+      <div className={styles.skyZone}>
+        <LandingHero demo={live?.demo ?? null} preview={live?.preview ?? []} />
+      </div>
 
       {/* ---- light lower sections ---- */}
       <div className={styles.lower}>

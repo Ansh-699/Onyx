@@ -28,14 +28,20 @@
 
 /* ---------- sky hero ---------- */
 
+/* the sky wraps hero AND panel, so blue reaches down past the app showcase
+   on both sides (reference behavior) */
+.skyZone {
+  background:
+    linear-gradient(180deg, #1d54b4 0%, #2e6ace 26%, #4f86d8 52%, #7fade6 74%, #b9d4f0 92%, #dcebf8 100%);
+  padding-bottom: 56px;
+}
+
 .hero {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 64px 16px 240px; /* deep bottom padding — the panel overlaps into it */
-  background:
-    radial-gradient(120% 70% at 50% -10%, #1d54b4 0%, #2e6ace 34%, #5f96e0 62%, #a9c9ee 84%, #dcebf8 100%);
+  padding: 40px 16px 44px; /* wordmark up; panel follows in normal flow inside the sky */
 }
 
 .wordmark {
@@ -122,10 +128,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 30px;
-  padding: 15px 52px;
+  margin-top: 26px;
+  padding: 11px 38px;
   border-radius: 999px;
-  font-size: 1.08rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: #0d3f7a;
   text-decoration: none;
@@ -188,24 +194,39 @@
   -webkit-backdrop-filter: blur(14px);
 }
 
+.pillNav button,
 .pillNav a {
   padding: 8px 20px;
   border-radius: 999px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 0.88rem;
   font-weight: 650;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(16, 42, 74, 0.72); /* darker — readable over the pale glass pill */
   text-decoration: none;
   transition: color 140ms ease, background 140ms ease;
 }
 
+.pillNav button:hover,
 .pillNav a:hover {
-  color: #fff;
+  color: #10294a;
   text-decoration: none;
 }
 
-.pillNav a[data-primary="true"] {
+.pillNav button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.pillNav button[data-primary="true"] {
   color: #113a66;
   background: #fff;
+}
+
+.docsLink {
+  opacity: 0.9;
 }
 
 /* ---------- floating panel zone ---------- */
@@ -213,7 +234,6 @@
 .panelZone {
   position: relative;
   z-index: 2;
-  margin-top: -190px; /* the overlap: panel rides up over the sky */
   padding: 0 16px;
 }
 
@@ -235,8 +255,8 @@
 /* ---------- light lower sections ---------- */
 
 .lower {
-  background: linear-gradient(180deg, #dcebf8 0%, var(--bg) 26%);
-  padding: 72px 16px 40px;
+  background: linear-gradient(180deg, #dcebf8 0%, var(--bg) 22%);
+  padding: 56px 16px 40px;
 }
 
 .featureRow {
@@ -411,9 +431,51 @@
 
 @media (max-width: 640px) {
   .hero {
-    padding-bottom: 200px;
+    padding-bottom: 32px;
   }
-  .panelZone {
-    margin-top: -160px;
-  }
+}
+
+/* ---------- wordmark + credibility pill internals ---------- */
+
+.logoImg {
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.credInner {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.credItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.credLogo {
+  border-radius: 50%;
+}
+
+.credLogoRound {
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* CTA label inside the LiquidGlass wrapper (the lib draws the glass) */
+.ctaInner {
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ctaInner:hover {
+  text-decoration: none;
 }

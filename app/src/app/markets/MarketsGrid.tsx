@@ -559,6 +559,16 @@ export function MarketsGrid() {
     };
   }, [ammPools, now]);
 
+  // Settled markets trail the open ones on the default tab, greyed out —
+  // recent outcomes stay visible without competing with what's tradeable.
+  const settledTail = useMemo(() => {
+    if (statusFilter !== "markets" || search.trim() || category !== "all") return [];
+    return rows
+      .filter((r) => r.curated && (r.market.status === STATUS_SETTLED || r.market.status === STATUS_CLAIMED))
+      .sort((a, b) => (b.market.createdSlot > a.market.createdSlot ? 1 : -1))
+      .slice(0, 6);
+  }, [rows, statusFilter, search, category]);
+
   const shownRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = rows.filter((r) => matchesStatusFilter(r, statusFilter, now));
@@ -623,7 +633,7 @@ export function MarketsGrid() {
         <span className="mono">bun run services/ingestion/src/l0_loop_test.ts</span> to create one.
       </p>
     );
-  } else if (shownRows.length === 0) {
+  } else if (shownRows.length === 0 && settledTail.length === 0) {
     body = (
       <div className={`card ${styles.stateCard}`}>
         <p className="muted">
@@ -658,6 +668,19 @@ export function MarketsGrid() {
             myPosition={myPositionByMarket.get(row.market.pda)}
             onQuickTrade={setQuickTarget}
           />
+        ))}
+        {settledTail.map((row) => (
+          <div key={row.market.pda} className={styles.settledDim}>
+            <MarketCard
+              row={row}
+              now={now}
+              pool={ammPools?.get(row.market.pda)}
+              series={history?.[row.market.pda]}
+              traders={traderCounts?.perMarket.get(row.market.pda)}
+              myPosition={myPositionByMarket.get(row.market.pda)}
+              onQuickTrade={setQuickTarget}
+            />
+          </div>
         ))}
       </div>
     );
@@ -707,12 +730,12 @@ export function MarketsGrid() {
         {(
           [
             { id: "all", label: "All" },
-            { id: "trending", label: "🔥 Trending" },
-            { id: "new", label: "⭐ New" },
-            { id: "ending", label: "⏳ Ending soon" },
-            { id: "goals", label: "⚽ Goals" },
-            { id: "cards", label: "🟨 Cards" },
-            { id: "corners", label: "⛳ Corners" },
+            { id: "trending", label: "Trending" },
+            { id: "new", label: "New" },
+            { id: "ending", label: "Ending soon" },
+            { id: "goals", label: "Goals" },
+            { id: "cards", label: "Cards" },
+            { id: "corners", label: "Corners" },
           ] as { id: Category; label: string }[]
         ).map((c) => (
           <button

@@ -537,3 +537,15 @@
   border-color: transparent;
   font-weight: 650;
 }
+
+/* Settled markets trailing the open ones — visibly resolved, not tradeable. */
+.settledDim {
+  opacity: 0.55;
+  filter: grayscale(0.5);
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
+.settledDim:hover {
+  opacity: 0.85;
+  filter: grayscale(0.15);
+}

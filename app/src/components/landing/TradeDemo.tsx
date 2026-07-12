@@ -1,14 +1,13 @@
 "use client";
 
-// The landing's signature section: a dark app panel that floats up over the
-// sky hero and plays a live trade. Honesty rails: the chart is REAL recorded
-// price history for a REAL market; the order-panel math runs the SAME
-// quoteBuy the program mirrors (lib/ammMath.ts) against the market's real
-// reserves; figures are small devnet tUSDC amounts, labeled as a demo.
-// No leverage anywhere — ONYX is a spot AMM.
+// The trade screen inside the landing's floating app panel: plays a live
+// trade. Honesty rails: the chart is REAL recorded price history for a REAL
+// market; the order-panel math runs the SAME quoteBuy the program mirrors
+// (lib/ammMath.ts) against the market's real reserves; figures are small
+// devnet tUSDC amounts, labeled as a demo. No leverage — ONYX is a spot AMM.
+// `active` drives the animations (panel revealed AND this tab selected).
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { quoteBuy } from "@/lib/ammMath";
 import styles from "./TradeDemo.module.css";
 
@@ -38,32 +37,14 @@ function fmt(n: number, dp = 2): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
-export function TradeDemo({ data }: { data: DemoData }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [revealed, setRevealed] = useState(false);
+export function TradeScreen({ data, active }: { data: DemoData; active: boolean }) {
+  const revealed = active;
   const [amount, setAmount] = useState(0);
   const [side, setSide] = useState<"yes" | "no">("yes");
   const [reduced, setReduced] = useState(false);
 
   useEffect(() => {
     setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  }, []);
-
-  // reveal on scroll
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      ([e]) => {
-        if (e?.isIntersecting) {
-          setRevealed(true);
-          io.disconnect();
-        }
-      },
-      { threshold: 0.25 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
   }, []);
 
   // amount count-up (rAF; reduced motion jumps straight to the end)
@@ -118,29 +99,7 @@ export function TradeDemo({ data }: { data: DemoData }) {
   const deltaYes = chart ? chart.deltaYes : 0;
 
   return (
-    <div ref={ref} className={`${styles.panel} ${revealed ? styles.revealed : ""}`}>
-      {/* top bar mirroring the real app */}
-      <div className={styles.appBar}>
-        <span className={styles.appLogo}>ONYX</span>
-        <span className={styles.appNav}>
-          <span data-active="true">Markets</span>
-          <span>Trade</span>
-          <span>Portfolio</span>
-        </span>
-        <span className={styles.appBarRight}>
-          <span className={styles.portfolioChip}>
-            <span className={styles.chipLabel}>portfolio</span>
-            {fmt(quote.toWin + 98, 0)} tUSDC
-          </span>
-          <Link href="/markets" className={styles.launchBtn}>
-            Launch
-          </Link>
-          <span className={styles.avatar} aria-hidden />
-        </span>
-      </div>
-
-      <div className={styles.demoNote}>illustrative demo · real market data &amp; real AMM math · devnet tUSDC</div>
-
+    <div>
       <div className={styles.body}>
         {/* left: real price history */}
         <div className={styles.chartSide}>
@@ -211,9 +170,9 @@ export function TradeDemo({ data }: { data: DemoData }) {
             <span>+20</span>
             <span>MAX</span>
           </div>
-          <Link href={`/market/${data.marketPda}`} className={styles.buyBtn}>
+          <span className={styles.buyBtn} role="presentation">
             Buy {side === "yes" ? "Yes" : "No"}
-          </Link>
+          </span>
           <dl className={styles.calc}>
             <div>
               <dt>Shares</dt>
@@ -240,9 +199,9 @@ export function TradeDemo({ data }: { data: DemoData }) {
           <span className={styles.delta} data-up={deltaYes >= 0}>
             {deltaYes >= 0 ? "▲" : "▼"} {Math.abs(deltaYes).toFixed(1)}
           </span>
-          <Link href={`/market/${data.marketPda}`} className={styles.oYes}>
+          <span className={styles.oYes} role="presentation">
             Buy Yes
-          </Link>
+          </span>
         </div>
         <div className={styles.outcomeRow}>
           <span className={styles.outcomeName}>No</span>
@@ -250,9 +209,9 @@ export function TradeDemo({ data }: { data: DemoData }) {
           <span className={styles.delta} data-up={deltaYes < 0}>
             {deltaYes < 0 ? "▲" : "▼"} {Math.abs(deltaYes).toFixed(1)}
           </span>
-          <Link href={`/market/${data.marketPda}`} className={styles.oNo}>
+          <span className={styles.oNo} role="presentation">
             Buy No
-          </Link>
+          </span>
         </div>
       </div>
     </div>
