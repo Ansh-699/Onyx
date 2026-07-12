@@ -87,7 +87,7 @@ export function LiveScore({
         </span>
         <span className="muted mono" style={{ fontSize: "0.72rem" }}>
           {score ? `updated ${new Date(score.fetchedAt).toLocaleTimeString()} · ` : ""}
-          {streamLive ? "⚡ live push (SSE)" : "20s poll"} · TxLINE publishes ~60s (SL1 tier)
+          {streamLive ? "live push (SSE)" : "20s poll"} · TxLINE publishes ~60s (SL1 tier)
         </span>
       </div>
     </div>
