@@ -177,12 +177,12 @@
   position: absolute;
   left: 10%;
   right: 10%;
-  bottom: -18px;
-  height: 22px;
+  bottom: -14px;
+  height: 16px;
   background: radial-gradient(ellipse at center, rgba(10, 40, 90, 0.45), transparent 70%);
-  filter: blur(12px);
+  filter: blur(10px);
   opacity: 0.6;
-  transform: translateY(8px) scaleX(0.9);
+  transform: translateY(6px) scaleX(0.9);
   transition: opacity 300ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   z-index: -1;
@@ -206,7 +206,7 @@
 
 .heroCta:hover::after {
   opacity: 0.85;
-  transform: translateY(18px) scaleX(1.05);
+  transform: translateY(12px) scaleX(1.05);
 }
 
 /* PRESS: settle slightly */
@@ -223,8 +223,10 @@
   position: relative;
   display: inline-flex;
   gap: 2px;
-  margin-top: 16px;
+  margin-top: 20px;
   padding: 4px;
+  isolation: isolate;
+  transform: translateZ(0); /* own layer — see hover-artifact note above */
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.3);
   background: rgba(255, 255, 255, 0.16);

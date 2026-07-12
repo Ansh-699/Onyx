@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import logoGem from "@/assets/onyx-gem.png";
+import logoGem from "@/assets/onyx-gem-light.png";
 import solanaLogo from "@/assets/Solana-Round-Logo-PNG.png";
 import magicblockLogo from "@/assets/magicblock.jpg";
 import { TradeScreen, type DemoData } from "./TradeDemo";
