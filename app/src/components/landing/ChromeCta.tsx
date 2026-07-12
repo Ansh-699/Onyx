@@ -93,7 +93,7 @@ function compile(gl: WebGLRenderingContext, type: number, src: string): WebGLSha
   return sh;
 }
 
-export function ChromeCta({ href, label = "Launch App", bands = 7, warp = 0.55, split = 0.16, loopMs = 4000 }: ChromeCtaProps) {
+export function ChromeCta({ href, label = "Launch App", bands = 10, warp = 0.55, split = 0.16, loopMs = 4000 }: ChromeCtaProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [webglOk, setWebglOk] = useState(true);
