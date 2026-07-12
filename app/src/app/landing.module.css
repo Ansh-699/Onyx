@@ -32,7 +32,7 @@
    on both sides (reference behavior) */
 .skyZone {
   background:
-    linear-gradient(180deg, #123c8f 0%, #1d54b4 18%, #2e6ace 40%, #4f86d8 62%, #7fade6 80%, #b9d4f0 93%, #dcebf8 100%);
+    linear-gradient(180deg, #1a4da8 0%, #2660c4 22%, #3a74d4 44%, #5f96e0 64%, #8cb6ea 82%, #c3daf3 94%, #dcebf8 100%);
   padding-bottom: 64px;
 }
 
@@ -41,16 +41,16 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  /* generous top band of pure sky before any content; bigger gap to the panel below */
-  padding: 88px 16px 72px;
+  /* a modest band of sky, then compact vertical rhythm (reference-tight) */
+  padding: 44px 16px 36px;
 }
 
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   color: #fff;
-  font-size: 1.25rem;
+  font-size: 1.45rem;
   font-weight: 750;
   letter-spacing: 0.08em;
 }
@@ -65,7 +65,7 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  margin-top: 16px;
+  margin-top: 12px;
   padding: 7px 16px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -84,7 +84,7 @@
 }
 
 .heroTitle {
-  margin: 26px 0 0;
+  margin: 18px 0 0;
   color: #fff;
   font-size: clamp(2.25rem, 5vw, 3.25rem);
   line-height: 1.05;
@@ -94,7 +94,7 @@
 }
 
 .heroSub {
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   max-width: 520px;
   color: rgba(255, 255, 255, 0.82);
   font-size: 0.95rem;
@@ -122,77 +122,129 @@
   }
 }
 
-/* ---------- the liquid-glass CTA (Beta-Access replica) ---------- */
+/* ---------- the liquid-glass CTA — lift, sheen & detached-shadow
+   choreography (physical glass floating above the page) ---------- */
 
 .heroCta {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 22px;
-  padding: 8px 28px;
-  border-radius: 999px;
-  font-size: 0.85rem;
+  margin-top: 18px;
+  padding: 9px 30px;
+  border-radius: 100px;
+  font-size: 0.88rem;
   font-weight: 700;
   color: #0d3f7a;
   text-decoration: none;
-  /* glossy light-blue glass: bright top highlight over translucent blue */
-  border: 1px solid rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(214, 236, 255, 0.55) 40%, rgba(158, 205, 250, 0.45) 100%);
-  backdrop-filter: blur(10px) saturate(1.4);
-  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  /* rest elevation: tight close shadow + glossy inner edges */
   box-shadow:
-    inset 0 2px 3px rgba(255, 255, 255, 0.9),
-    inset 0 -10px 20px -8px rgba(70, 130, 220, 0.55),
-    0 12px 36px -10px rgba(20, 60, 140, 0.55);
-  overflow: hidden;
-  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.25, 1), box-shadow 240ms ease;
+    0 8px 20px rgba(20, 60, 120, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    inset 0 -2px 6px rgba(255, 255, 255, 0.15);
+  overflow: visible;
+  transform: translateY(0) scale(1);
+  transition:
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 300ms ease;
+  will-change: transform, box-shadow;
 }
 
-/* specular sheen — sweeps across on hover like light over curved glass */
-.heroCta::after {
+/* diagonal light sheen that sweeps once on hover — animated via
+   background-position so it can never escape the pill (the button keeps
+   overflow: visible for the detached ::after shadow below) */
+.heroCta::before {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -80%;
-  width: 55%;
-  background: linear-gradient(105deg, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
-  transform: skewX(-18deg);
-  transition: left 520ms cubic-bezier(0.3, 0.6, 0.3, 1);
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  background-size: 250% 100%;
+  background-position: 120% 0;
+  transition: background-position 700ms ease;
   pointer-events: none;
 }
 
+/* detached floating shadow beneath — the "gap" that sells the float */
+.heroCta::after {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -18px;
+  height: 22px;
+  background: radial-gradient(ellipse at center, rgba(10, 40, 90, 0.45), transparent 70%);
+  filter: blur(12px);
+  opacity: 0.6;
+  transform: translateY(8px) scaleX(0.9);
+  transition: opacity 300ms ease, transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* HOVER: lift, brighten, bigger softer shadow; sheen sweeps; under-shadow
+   drops lower and spreads — opposing motion = floating */
 .heroCta:hover {
   text-decoration: none;
-  transform: scale(1.05);
+  transform: translateY(-6px) scale(1.03);
+  filter: brightness(1.05);
   box-shadow:
-    inset 0 2px 3px rgba(255, 255, 255, 0.95),
-    inset 0 -10px 22px -8px rgba(70, 130, 220, 0.65),
-    0 18px 48px -12px rgba(20, 60, 140, 0.65);
+    0 20px 40px rgba(20, 60, 120, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -2px 8px rgba(255, 255, 255, 0.2);
+}
+
+.heroCta:hover::before {
+  background-position: -120% 0;
 }
 
 .heroCta:hover::after {
-  left: 125%;
+  opacity: 0.85;
+  transform: translateY(18px) scaleX(1.05);
 }
 
+/* PRESS: settle slightly */
 .heroCta:active {
-  transform: scale(0.99);
+  transform: translateY(-2px) scale(0.99);
+  box-shadow:
+    0 10px 22px rgba(20, 60, 120, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 /* ---------- segmented glass nav pill ---------- */
 
 .pillNav {
+  position: relative;
   display: inline-flex;
   gap: 2px;
-  margin-top: 20px;
+  margin-top: 16px;
   padding: 4px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.3);
   background: rgba(255, 255, 255, 0.16);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+}
+
+/* the sliding white chip behind the active tab */
+.pillIndicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(20, 60, 120, 0.25);
+  transition:
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
 }
 
 .pillNav button,
@@ -205,14 +257,16 @@
   font-family: inherit;
   font-size: 0.8rem;
   font-weight: 650;
-  color: rgba(16, 42, 74, 0.72); /* darker — readable over the pale glass pill */
+  color: rgba(255, 255, 255, 0.7); /* white over the sky; indicator carries the active state */
   text-decoration: none;
-  transition: color 140ms ease, background 140ms ease;
+  position: relative;
+  z-index: 1;
+  transition: color 140ms ease;
 }
 
 .pillNav button:hover,
 .pillNav a:hover {
-  color: #10294a;
+  color: #fff;
   text-decoration: none;
 }
 
@@ -222,8 +276,7 @@
 }
 
 .pillNav button[data-primary="true"] {
-  color: #113a66;
-  background: #fff;
+  color: #0b1220;
 }
 
 .docsLink {
@@ -235,7 +288,7 @@
 .panelZone {
   position: relative;
   z-index: 2;
-  padding: 24px 16px 0;
+  padding: 12px 16px 0;
 }
 
 .panelFallback {
@@ -423,10 +476,18 @@
     transform: none;
   }
   .heroCta,
+  .heroCta::before,
   .heroCta::after,
+  .pillIndicator,
   .previewCard,
   .featureCard {
     transition: none;
+  }
+  .heroCta:hover {
+    transform: none;
+  }
+  .heroCta:hover::before {
+    background-position: 120% 0;
   }
 }
 

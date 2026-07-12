@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import logoLight from "@/assets/image-light.png";
+import logoGem from "@/assets/onyx-gem.png";
 import solanaLogo from "@/assets/Solana-Round-Logo-PNG.png";
 import magicblockLogo from "@/assets/magicblock.jpg";
 import { TradeScreen, type DemoData } from "./TradeDemo";
@@ -39,8 +39,8 @@ export interface ActivityRow {
 }
 
 const TABS = [
-  { id: "markets", label: "Markets" },
   { id: "trade", label: "Trade" },
+  { id: "markets", label: "Markets" },
   { id: "portfolio", label: "Portfolio" },
   { id: "activity", label: "Activity" },
 ] as const;
@@ -161,6 +161,21 @@ export function LandingHero({
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>("trade");
   const [revealed, setRevealed] = useState(false);
+  const [indicator, setIndicator] = useState<{ x: number; w: number } | null>(null);
+
+  // Sliding white chip: measure the active tab button and glide the
+  // indicator to it (transform+width only — no layout thrash). Re-measures
+  // on resize; prefers-reduced-motion snaps via CSS.
+  useEffect(() => {
+    const measure = () => {
+      const idx = TABS.findIndex((t) => t.id === activeTab);
+      const el = tabRefs.current[idx];
+      if (el) setIndicator({ x: el.offsetLeft, w: el.offsetWidth });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [activeTab]);
 
   useEffect(() => {
     const el = panelRef.current;
@@ -204,7 +219,7 @@ export function LandingHero({
       <section className={styles.hero}>
         <div className={`${styles.heroItem} ${styles.d0}`}>
           <span className={styles.wordmark}>
-            <Image src={logoLight} alt="" width={26} height={26} className={styles.logoImg} priority />
+            <Image src={logoGem} alt="" width={30} height={30} className={styles.logoImg} priority />
             ONYX
           </span>
         </div>
@@ -245,6 +260,13 @@ export function LandingHero({
         {/* in-panel preview tabs — real tablist, zero navigation */}
         <div className={`${styles.heroItem} ${styles.d5}`}>
           <div className={styles.pillNav} role="tablist" aria-label="App preview" onKeyDown={onTabKey}>
+            {indicator && (
+              <span
+                className={styles.pillIndicator}
+                aria-hidden
+                style={{ transform: `translateX(${indicator.x}px)`, width: indicator.w }}
+              />
+            )}
             {TABS.map((t, i) => (
               <button
                 key={t.id}
@@ -278,7 +300,7 @@ export function LandingHero({
         >
           <div className={demoStyles.appBar}>
             <span className={demoStyles.appLogo}>
-              <Image src={logoLight} alt="" width={20} height={20} className={styles.logoImg} />
+              <Image src={logoGem} alt="" width={18} height={18} className={styles.logoImg} />
               ONYX
             </span>
             <span className={demoStyles.appNav}>
