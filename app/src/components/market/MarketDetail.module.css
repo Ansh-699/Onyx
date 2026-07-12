@@ -48,45 +48,37 @@
   margin-top: 16px;
 }
 
+/* Two natural-flow columns (no row spans): each column stacks its own cards
+   with normal gaps, so a short left column no longer leaves a dead hole
+   beside a tall trade panel — the old 2-row-span layout did exactly that. */
 .cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
-  grid-template-areas:
-    "price trade"
-    "settle trade";
   gap: 16px;
   align-items: start;
   margin-top: 16px;
 }
 
-.areaPrice {
-  grid-area: price;
+.colMain,
+.colSide {
   min-width: 0;
-}
-.areaTrade {
-  grid-area: trade;
-  min-width: 0;
-}
-.areaSettle {
-  grid-area: settle;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* Non-sealed (plain join) markets have no trading panel — collapse the
-   trade column instead of leaving a 380px hole. */
+   side column instead of leaving a 380px hole. */
 .cols[data-sealed="false"] {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "price"
-    "settle";
 }
 
 @media (max-width: 940px) {
   .cols {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "price"
-      "trade"
-      "settle";
+  }
+  /* trade panel first on mobile — it's the action */
+  .colSide {
+    order: -1;
   }
 }

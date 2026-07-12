@@ -99,10 +99,10 @@
   --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04),
     0 8px 24px -12px rgba(15, 23, 42, 0.1);
 
-  --glass-tint: rgba(255, 255, 255, 0.16);
-  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-tint: rgba(255, 255, 255, 0.34);
+  --glass-border: rgba(15, 23, 42, 0.12);
   --glass-highlight: rgba(255, 255, 255, 0.9);
-  --glass-shadow: rgba(15, 23, 42, 0.12);
+  --glass-shadow: rgba(15, 23, 42, 0.18);
   --wash-1: 26%;
   --wash-2: 18%;
   --wash-3: 13%;
@@ -134,10 +134,10 @@
     --amber-dim: rgba(180, 83, 9, 0.1);
     --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04),
       0 8px 24px -12px rgba(15, 23, 42, 0.1);
-    --glass-tint: rgba(255, 255, 255, 0.16);
-    --glass-border: rgba(15, 23, 42, 0.08);
+    --glass-tint: rgba(255, 255, 255, 0.34);
+    --glass-border: rgba(15, 23, 42, 0.12);
     --glass-highlight: rgba(255, 255, 255, 0.9);
-    --glass-shadow: rgba(15, 23, 42, 0.12);
+    --glass-shadow: rgba(15, 23, 42, 0.18);
   }
 }
 

@@ -75,6 +75,7 @@ import {
 } from "@/lib/instructions";
 import { quoteBuy, quoteSell, spotPriceScaled, minOutForTolerance, buyImpactBps } from "@/lib/ammMath";
 import { WalletButton } from "@/components/WalletButton";
+import { LiquidButton } from "@/components/ui/liquid-glass-button";
 import { fmtUsdc } from "@/components/market/format";
 import styles from "./ErTradingPanel.module.css";
 
@@ -239,18 +240,22 @@ export function AmmTradingPanel({
   async function onStartSession() {
     const amount = toBase(depositUsdc);
     if (!amount || !publicKey || !signTransaction) return;
-    await withGuard("Getting devnet test-USDC…", async () => {
-      const usdcMint = await getConfigUsdcMint();
+    await withGuard("Topping up devnet test-USDC…", async () => {
+      // Faucet + config fetch run concurrently — the faucet mint is the slow
+      // leg (~2-4s) and used to run serially before anything else.
+      const [usdcMint, faucetRes] = await Promise.all([
+        getConfigUsdcMint(),
+        fetch("/api/faucet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: publicKey.toBase58() }),
+        }),
+      ]);
       if (!usdcMint) throw new Error("config not initialized on devnet yet");
-      const faucetRes = await fetch("/api/faucet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: publicKey.toBase58() }),
-      });
       const faucetBody = await faucetRes.json();
       if (!faucetRes.ok || !faucetBody.ok) throw new Error(`devnet faucet failed: ${faucetBody.error ?? faucetRes.status}`);
 
-      setBusy("Starting session (one signature)…");
+      setBusy("Waiting for your wallet (1 signature)…");
       const fresh = createSessionKeypair();
       const ixs = [
         buildCreateSessionIx({ authority: publicKey, sessionSigner: fresh.keypair.publicKey, validUntil: fresh.expiry }),
@@ -264,16 +269,18 @@ export function AmmTradingPanel({
       ixs.push(buildDelegateAmmPositionIx({ payer: publicKey, market: marketPk, owner: publicKey }));
       const tx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }), ...ixs);
       // Two signers: the wallet (fee payer + session authority) and the
-      // ephemeral key (gpl_session requires the session_signer to co-sign).
-      const { blockhash, lastValidBlockHeight } = await getConnection().getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = publicKey;
-      tx.partialSign(fresh.keypair);
-      const signed = await signTransaction(tx);
-      const sig = await getConnection().sendRawTransaction(signed.serialize(), { skipPreflight: true });
-      const conf = await getConnection().confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-      if (conf.value.err) throw new Error(`Transaction ${sig} failed: ${JSON.stringify(conf.value.err)}`);
-      setLog((prev) => [{ label: "start session (create+deposit+delegate)", sig, ms: 0 }, ...prev].slice(0, 8));
+      // ephemeral key (gpl_session requires the session_signer to co-sign) —
+      // sendViaWallet partial-signs it before the popup. Confirmation runs
+      // the shared WS+poll race with expiry detection and a hard cap, so
+      // this can no longer spin forever.
+      const signAndMarkConfirming: typeof signTransaction = async (t) => {
+        const signed = await signTransaction(t);
+        setBusy("Confirming on devnet…");
+        return signed;
+      };
+      await timed("start session (create+deposit+delegate)", () =>
+        sendViaWallet(getConnection(), tx, publicKey, signAndMarkConfirming, [fresh.keypair]),
+      );
       // Persist only after confirmation — an unconfirmed key is garbage.
       saveSession(CLUSTER, publicKey, fresh);
       setSession(fresh);
@@ -428,6 +435,16 @@ export function AmmTradingPanel({
         ))}
       </div>
 
+      {!tradingOpen && (
+        <p className={styles.blurb} data-testid="amm-closed-note">
+          {settled
+            ? "Trading closed — this market is settled. Winning tokens redeem 1:1 below."
+            : expired
+              ? "Trading closed — the deadline passed and the market never settled. Deposits and paired token value are refundable below."
+              : "Trading closed — the deadline has passed. Settlement runs once the oracle proof is available."}
+        </p>
+      )}
+
       {!connected && <WalletButton />}
 
       {connected && tradingOpen && (!position || position.usdcAvailable === 0n) && (position?.tokensA ?? 0n) === 0n && (position?.tokensB ?? 0n) === 0n && (
@@ -446,8 +463,8 @@ export function AmmTradingPanel({
               <input value={depositUsdc} onChange={(e) => setDepositUsdc(e.target.value)} inputMode="decimal" placeholder="2" data-testid="amm-deposit-input" />
             </label>
           </div>
-          <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
-            <button className="button" type="button" onClick={onStartSession} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-session-btn">
+          <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
+            <LiquidButton size="lg" type="button" onClick={onStartSession} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-session-btn">
               {busy ? (
                 <>
                   <span className={styles.spinner} aria-hidden /> {busy}
@@ -455,7 +472,7 @@ export function AmmTradingPanel({
               ) : (
                 "Start session (1 signature)"
               )}
-            </button>
+            </LiquidButton>
             <button className="button" data-variant="ghost" type="button" onClick={onDeposit} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-deposit-btn">
               Deposit only (sign each trade)
             </button>
@@ -508,13 +525,13 @@ export function AmmTradingPanel({
               <input value={amountStr} onChange={(e) => setAmountStr(e.target.value)} inputMode="decimal" placeholder="0.5" data-testid="amm-amount" />
             </label>
           </div>
-          <details style={{ fontSize: "0.8rem" }}>
-            <summary className="muted" style={{ cursor: "pointer" }}>Advanced · slippage tolerance {tolStr}%</summary>
-            <label className={styles.field} style={{ marginTop: 6, maxWidth: 200 }}>
-              <span className={styles.fieldLabel}>Slippage tolerance (%) — enforced on-chain</span>
-              <input value={tolStr} onChange={(e) => setTolStr(e.target.value)} inputMode="decimal" placeholder="1.0" data-testid="amm-tolerance" />
-            </label>
-          </details>
+          {/* slippage stays visible — it's enforced on-chain (min_out → SlippageExceeded), and a judge should SEE that rail, not find it behind a disclosure */}
+          <label className={styles.field} style={{ maxWidth: 220 }}>
+            <span className={styles.fieldLabel} title="Encoded into every swap as min_out; the program reverts rather than fill worse. On-chain enforcement, not a UI promise.">
+              Max slippage (%) · enforced on-chain
+            </span>
+            <input value={tolStr} onChange={(e) => setTolStr(e.target.value)} inputMode="decimal" placeholder="1.0" data-testid="amm-tolerance" />
+          </label>
 
           {quote && (
             <div className={styles.availRow} data-testid="amm-quote">
@@ -537,7 +554,7 @@ export function AmmTradingPanel({
             </div>
           )}
 
-          <button className="button" type="submit" disabled={!!busy || !quote || insufficient} data-testid="amm-swap-btn">
+          <LiquidButton size="lg" type="submit" disabled={!!busy || !quote || insufficient} data-testid="amm-swap-btn">
             {busy ? (
               <>
                 <span className={styles.spinner} aria-hidden /> {busy}
@@ -545,9 +562,9 @@ export function AmmTradingPanel({
             ) : insufficient ? (
               direction === SWAP_BUY ? "Not enough deposited tUSDC" : "Not enough tokens"
             ) : (
-              `${direction === SWAP_BUY ? "Buy" : "Sell"} ${side === SIDE_A ? "Side A" : "Side B"} ${isDelegated ? "(ER)" : ""}`
+              `${direction === SWAP_BUY ? "Buy" : "Sell"} ${side === SIDE_A ? "Yes (A)" : "No (B)"} ${isDelegated ? "· instant on ER" : ""}`
             )}
-          </button>
+          </LiquidButton>
         </form>
       )}
 

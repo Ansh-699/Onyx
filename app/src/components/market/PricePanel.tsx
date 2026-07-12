@@ -17,8 +17,9 @@ import {
   TRADING_STATUS_LOCKED,
   TRADING_STATUS_REVEALED,
   priceToPercent,
+  volumeFromFees,
 } from "@/lib/onchain";
-import { useSealedOrders, useTradingAccountsForMarket } from "@/lib/hooks";
+import { useSealedOrders, useTradingAccountsForMarket, useAmmTraderCounts } from "@/lib/hooks";
 import { spotPriceScaled } from "@/lib/ammMath";
 import { fmtUsdc } from "./format";
 import styles from "./PricePanel.module.css";
@@ -35,13 +36,16 @@ export function AmmPricePanel({ pool, isDelegated }: { pool: OnChainAmmPool; isD
   const priceB = 1_000_000n - priceA;
   const centsA = Math.round(Number(priceA) / 10_000);
   const pctA = Number(priceA) / 10_000;
+  const volume = volumeFromFees(pool.feesAccrued, pool.feeBps);
+  const traders = useAmmTraderCounts([pool.market]);
+  const traderCount = traders.data?.perMarket.get(pool.market);
 
   return (
     <div className={`card ${styles.wrap}`}>
       <div className={styles.topRow}>
         <div>
           <div className={styles.bigLabel}>Yes (Side A) · pool price</div>
-          <div className={styles.big}>{centsA}¢</div>
+          <div className={`${styles.big} live-value`}>{centsA}¢</div>
         </div>
         <dl className={styles.stats}>
           <div>
@@ -49,8 +53,14 @@ export function AmmPricePanel({ pool, isDelegated }: { pool: OnChainAmmPool; isD
             <dd>{100 - centsA}¢</dd>
           </div>
           <div>
+            <dt title="Derived from on-chain fees (fees × 10000 / fee_bps) — includes disclosed seeded market-making; every trade is a real devnet swap.">
+              Volume (total)
+            </dt>
+            <dd className="live-value">{fmtUsdc(volume)} tUSDC</dd>
+          </div>
+          <div>
             <dt>Pool reserves</dt>
-            <dd>
+            <dd className="live-value">
               {fmtUsdc(pool.reserveA)} A / {fmtUsdc(pool.reserveB)} B
             </dd>
           </div>
@@ -58,6 +68,12 @@ export function AmmPricePanel({ pool, isDelegated }: { pool: OnChainAmmPool; isD
             <dt>Fees accrued</dt>
             <dd>{fmtUsdc(pool.feesAccrued)} tUSDC</dd>
           </div>
+          {traderCount !== undefined && traderCount > 0 && (
+            <div>
+              <dt title="Unique on-chain position owners on this market.">Traders</dt>
+              <dd>{traderCount}</dd>
+            </div>
+          )}
         </dl>
       </div>
 

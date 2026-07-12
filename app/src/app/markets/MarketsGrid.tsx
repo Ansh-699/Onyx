@@ -8,7 +8,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useMarkets, useScore, useAmmPoolMarkets, useLiveFixtures } from "@/lib/hooks";
+import {
+  useMarkets,
+  useScore,
+  useAmmPoolMarkets,
+  useLiveFixtures,
+  useAmmPriceHistory,
+  useAmmTraderCounts,
+  useProtocolStats,
+  type PoolHistorySeries,
+} from "@/lib/hooks";
 import {
   type OnChainMarket,
   STATUS_NAMES,
@@ -20,10 +29,12 @@ import {
   STATUS_CLAIMED,
   STATUS_EXPIRED,
   STATUS_REFUNDED,
+  volumeFromFees,
 } from "@/lib/onchain";
 import type { AmmPoolSummary } from "@/lib/onchain";
 import { describeMarketPredicate, rawPredicateText } from "@/lib/statKeys";
 import { getFixtureInfo, fixtureDisplayName, getFixtureStartTimeMs, primeLiveFixtures } from "@/lib/fixtureMeta";
+import { flagFor } from "@/lib/flags";
 import styles from "./lobby.module.css";
 
 // ---------------------------------------------------------------------------
@@ -108,14 +119,24 @@ interface Row {
   searchText: string;
   /** Tradeable now: AMM pool exists, deadline in the future, status Open/Live. */
   active: boolean;
+  /** Demo-grade card: real team names AND an AMM pool. Everything else lives in Archive (hidden, never faked). */
+  curated: boolean;
 }
 
-type StatusFilter = "active" | "open" | "settled" | "archive";
-type SortMode = "volume" | "newest";
+type StatusFilter = "markets" | "settled" | "archive";
+type SortMode = "volume" | "ending" | "newest";
 
-function matchesStatusFilter(row: Row, filter: StatusFilter): boolean {
-  if (filter === "active") return row.active;
-  if (filter === "open") return row.market.status === STATUS_OPEN || row.market.status === STATUS_LIVE;
+function matchesStatusFilter(row: Row, filter: StatusFilter, now: number): boolean {
+  // "Markets" = trading-now AND open together (one browsing tab), curated to
+  // cards with real names + a real pool + a deadline that hasn't passed
+  // (an Open market past its deadline isn't tradeable — Archive keeps it).
+  if (filter === "markets") {
+    return (
+      row.curated &&
+      (row.market.status === STATUS_OPEN || row.market.status === STATUS_LIVE) &&
+      Number(row.market.deadline) * 1000 > now
+    );
+  }
   if (filter === "settled") return row.market.status === STATUS_SETTLED || row.market.status === STATUS_CLAIMED;
   return true; // archive = everything, nothing hidden
 }
@@ -145,31 +166,85 @@ function ScoreLine({ fixtureId }: { fixtureId: number }) {
   );
 }
 
-function MarketCard({ row, now, pool }: { row: Row; now: number; pool: AmmPoolSummary | undefined }) {
+/**
+ * Tiny price sparkline from REAL recorded/sampled on-chain price points (see
+ * /api/history — every point is a genuine ledger read). Renders nothing when
+ * fewer than 2 points exist: hide, never fabricate.
+ */
+function Sparkline({ series }: { series: PoolHistorySeries | undefined }) {
+  const points = series?.points ?? [];
+  if (points.length < 2) return null;
+  const W = 92;
+  const H = 26;
+  const t0 = points[0]!.t;
+  const t1 = points[points.length - 1]!.t;
+  const span = Math.max(t1 - t0, 1);
+  const d = points
+    .map((p, i) => {
+      const x = ((p.t - t0) / span) * (W - 2) + 1;
+      const y = H - 2 - (p.priceA / 1_000_000) * (H - 4);
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const up = points[points.length - 1]!.priceA >= points[0]!.priceA;
+  return (
+    <svg
+      className={styles.spark}
+      viewBox={`0 0 ${W} ${H}`}
+      width={W}
+      height={H}
+      aria-label="Recorded on-chain price history"
+      data-up={up}
+    >
+      <path d={d} fill="none" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function MarketCard({
+  row,
+  now,
+  pool,
+  series,
+  traders,
+}: {
+  row: Row;
+  now: number;
+  pool: AmmPoolSummary | undefined;
+  series: PoolHistorySeries | undefined;
+  traders: number | undefined;
+}) {
   const m = row.market;
   const isAmm = !!pool;
   const total = m.totalSideA + m.totalSideB;
   const startMs = getFixtureStartTimeMs(row.fixtureId);
   const started = startMs !== null && startMs <= now;
   const showOutcome = m.status === STATUS_SETTLED || m.status === STATUS_CLAIMED;
+  const info = getFixtureInfo(row.fixtureId);
+  const flag1 = info ? flagFor(info.participant1) : "";
+  const flag2 = info ? flagFor(info.participant2) : "";
 
   // Price of YES (side A) in cents. AMM: pool-implied price_A = b/(a+b) —
   // the real, tradeable price. Parimutuel fallback: stake share.
   let yesCents: number | null = null;
-  let vol = Number(total) / 1e6;
   if (pool && pool.reserveA + pool.reserveB > 0n) {
-    yesCents = Math.round(Number((pool.reserveB * 100n) / (pool.reserveA + pool.reserveB)));
-    vol = Number(pool.reserveA + pool.reserveB) / 1e6;
+    yesCents = Math.round(Number((pool.reserveB * 1000n) / (pool.reserveA + pool.reserveB)) / 10);
   } else if (total > 0n) {
     yesCents = Math.round(Number((m.totalSideA * 100n) / total));
   }
   const noCents = yesCents !== null ? 100 - yesCents : null;
 
+  // Real figures only: volume derived from on-chain fees, depth = pool custody.
+  const volUsd = pool ? Number(volumeFromFees(pool.feesAccrued, pool.feeBps)) / 1e6 : Number(total) / 1e6;
+  const depthUsd = pool ? Number(pool.reserveA + pool.reserveB) / 1e6 : 0;
+
   return (
     <Link href={`/market/${m.pda}`} className={`card ${styles.marketCard}`}>
       <div className={styles.cardTop}>
         <span className={styles.fixture} title={`TxLINE fixtureId ${row.fixtureId}`}>
+          {flag1 && <span aria-hidden>{flag1} </span>}
           {row.fixtureLabel}
+          {flag2 && <span aria-hidden> {flag2}</span>}
         </span>
         <span style={{ display: "inline-flex", gap: 6 }}>
           {started && row.active && (
@@ -206,6 +281,16 @@ function MarketCard({ row, now, pool }: { row: Row; now: number; pool: AmmPoolSu
         </div>
       )}
 
+      {/* implied probability, prominent — with the real recorded price path */}
+      {yesCents !== null && (
+        <div className={styles.probRow}>
+          <span className={styles.probBig}>
+            {yesCents}%<span className={styles.probCaption}>chance</span>
+          </span>
+          <Sparkline series={series} />
+        </div>
+      )}
+
       {/* Polymarket-style Yes/No price buttons — real pool prices in cents. */}
       <div className={styles.yesNoRow} aria-hidden={yesCents === null}>
         <span className={styles.yesBtn} data-empty={yesCents === null}>
@@ -220,9 +305,9 @@ function MarketCard({ row, now, pool }: { row: Row; now: number; pool: AmmPoolSu
 
       <div className={styles.cardBottom}>
         <div className={styles.cardBottomLeft}>
-          {isAmm && (
+          {isAmm && !showOutcome && (
             <span className={styles.probLabel} title="AMM market: continuous trading against a seeded pool — buy AND sell anytime before kickoff. Instant, gas-free on the Ephemeral Rollup with a trading session.">
-              AMM · trade anytime{pool?.delegated ? " · ⚡ ER" : ""}
+              {pool?.delegated ? "⚡ ER · " : ""}trade anytime
             </span>
           )}
           {showOutcome && (
@@ -231,8 +316,23 @@ function MarketCard({ row, now, pool }: { row: Row; now: number; pool: AmmPoolSu
             </span>
           )}
         </div>
-        <span className={styles.volume}>
-          {formatVolume(vol)} <span className={styles.volumeUnit}>tUSDC {isAmm ? "pool" : "vol"}</span>
+        <span
+          className={styles.volume}
+          title="Volume is derived from on-chain pool fees (fees × 10000 / fee_bps) — includes disclosed seeded market-making; every trade is a real devnet swap."
+        >
+          {formatVolume(volUsd)} <span className={styles.volumeUnit}>vol</span>
+          {traders !== undefined && traders > 0 && (
+            <>
+              {" · "}
+              {traders} <span className={styles.volumeUnit}>trader{traders === 1 ? "" : "s"}</span>
+            </>
+          )}
+          {depthUsd > 0 && (
+            <>
+              {" · "}
+              {formatVolume(depthUsd)} <span className={styles.volumeUnit}>depth</span>
+            </>
+          )}
         </span>
       </div>
     </Link>
@@ -266,6 +366,33 @@ function SkeletonCard() {
   );
 }
 
+/** Protocol totals strip — all live on-chain aggregates from /api/stats. */
+function StatsStrip() {
+  const { data } = useProtocolStats();
+  if (!data) return null;
+  const fmt = (raw: string) => formatVolume(Number(BigInt(raw)) / 1e6);
+  return (
+    <div
+      className={styles.statsStrip}
+      title="Live on-chain aggregates — includes disclosed seeded market-making; every underlying trade is a real devnet transaction."
+    >
+      <span>
+        <strong>{fmt(data.volume)}</strong> tUSDC volume
+      </span>
+      <span>
+        <strong>{fmt(data.openInterest)}</strong> open interest
+      </span>
+      <span>
+        <strong>{data.traders}</strong> traders
+      </span>
+      <span>
+        <strong>{data.settled}</strong> settled
+      </span>
+      <span className={styles.statsNote}>live from devnet · seeded market-making disclosed</span>
+    </div>
+  );
+}
+
 export function MarketsGrid() {
   const { data, isError, refetch } = useMarkets();
   const marketPdas = useMemo(() => (data ?? []).map((m) => m.pda), [data]);
@@ -278,8 +405,15 @@ export function MarketsGrid() {
   primeLiveFixtures(liveFixtures.data);
   const now = useNow();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("markets");
   const [sort, setSort] = useState<SortMode>("volume");
+  // History (sparklines) + trader counts, only for markets that have pools.
+  const pooledPdas = useMemo(
+    () => marketPdas.filter((p) => ammPools?.has(p)).slice(0, 48),
+    [marketPdas, ammPools],
+  );
+  const { data: history } = useAmmPriceHistory(pooledPdas.length > 0 ? pooledPdas : undefined);
+  const { data: traderCounts } = useAmmTraderCounts(pooledPdas.length > 0 ? pooledPdas : undefined);
 
   const { rows, hiddenCount, collapsedCount } = useMemo(() => {
     const all = data ?? [];
@@ -325,6 +459,9 @@ export function MarketsGrid() {
         raw,
         searchText: `${fixtureLabel} ${title} ${raw} ${fixtureId}`.toLowerCase(),
         active,
+        // curated = a card a first-time visitor should see: resolved team
+        // names AND a real pool. Everything else stays reachable in Archive.
+        curated: info !== null && (ammPools?.has(shown.pda) ?? false),
       });
     }
     return { rows: built, hiddenCount: hidden, collapsedCount: collapsed };
@@ -332,40 +469,47 @@ export function MarketsGrid() {
 
   const counts = useMemo(
     () => ({
-      active: rows.filter((r) => matchesStatusFilter(r, "active")).length,
-      open: rows.filter((r) => matchesStatusFilter(r, "open")).length,
-      settled: rows.filter((r) => matchesStatusFilter(r, "settled")).length,
+      markets: rows.filter((r) => matchesStatusFilter(r, "markets", now)).length,
+      settled: rows.filter((r) => matchesStatusFilter(r, "settled", now)).length,
       archive: rows.length,
     }),
-    [rows],
+    [rows, now],
   );
 
   const shownRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = rows.filter((r) => matchesStatusFilter(r, statusFilter));
+    let list = rows.filter((r) => matchesStatusFilter(r, statusFilter, now));
     if (q) list = list.filter((r) => r.searchText.includes(q));
     const sorted = [...list];
     if (sort === "volume") {
+      // Most active first: real fees-derived AMM volume, sealed matched
+      // volume as the fallback figure for non-AMM markets.
+      const volOf = (r: Row) => {
+        const p = ammPools?.get(r.market.pda);
+        if (p) return volumeFromFees(p.feesAccrued, p.feeBps);
+        return r.market.totalSideA + r.market.totalSideB;
+      };
       sorted.sort((a, b) => {
-        const av = a.market.totalSideA + a.market.totalSideB;
-        const bv = b.market.totalSideA + b.market.totalSideB;
+        const av = volOf(a);
+        const bv = volOf(b);
         if (av !== bv) return bv > av ? 1 : -1;
         return b.market.createdSlot > a.market.createdSlot ? 1 : -1;
       });
+    } else if (sort === "ending") {
+      sorted.sort((a, b) => Number(a.market.deadline) - Number(b.market.deadline));
     } else {
       sorted.sort((a, b) =>
         b.market.createdSlot > a.market.createdSlot ? 1 : b.market.createdSlot < a.market.createdSlot ? -1 : 0,
       );
     }
     return sorted;
-  }, [rows, search, statusFilter, sort]);
+  }, [rows, search, statusFilter, sort, ammPools, now]);
 
   const loading = data === undefined && !isError;
-  const filtersActive = search.trim() !== "" || statusFilter !== "active";
+  const filtersActive = search.trim() !== "" || statusFilter !== "markets";
 
   const FILTERS: { id: StatusFilter; label: string; count: number }[] = [
-    { id: "active", label: "Trading now", count: counts.active },
-    { id: "open", label: "Open", count: counts.open },
+    { id: "markets", label: "Markets", count: counts.markets },
     { id: "settled", label: "Settled", count: counts.settled },
     { id: "archive", label: "Archive", count: counts.archive },
   ];
@@ -399,7 +543,7 @@ export function MarketsGrid() {
     body = (
       <div className={`card ${styles.stateCard}`}>
         <p className="muted">
-          {statusFilter === "active" && !search.trim()
+          {statusFilter === "markets" && !search.trim()
             ? "No markets are trading right now — check the Archive for past markets."
             : "No markets match your search or filters."}
         </p>
@@ -409,10 +553,10 @@ export function MarketsGrid() {
           data-variant="ghost"
           onClick={() => {
             setSearch("");
-            setStatusFilter(statusFilter === "active" ? "archive" : "active");
+            setStatusFilter(statusFilter === "markets" ? "archive" : "markets");
           }}
         >
-          {statusFilter === "active" && !search.trim() ? "Browse archive" : "Clear filters"}
+          {statusFilter === "markets" && !search.trim() ? "Browse archive" : "Clear filters"}
         </button>
       </div>
     );
@@ -420,7 +564,14 @@ export function MarketsGrid() {
     body = (
       <div className="grid-cards">
         {shownRows.map((row) => (
-          <MarketCard key={row.market.pda} row={row} now={now} pool={ammPools?.get(row.market.pda)} />
+          <MarketCard
+            key={row.market.pda}
+            row={row}
+            now={now}
+            pool={ammPools?.get(row.market.pda)}
+            series={history?.[row.market.pda]}
+            traders={traderCounts?.perMarket.get(row.market.pda)}
+          />
         ))}
       </div>
     );
@@ -428,6 +579,7 @@ export function MarketsGrid() {
 
   return (
     <div className={styles.wrap}>
+      <StatsStrip />
       <div className={styles.controls}>
         <input
           type="search"
@@ -458,7 +610,8 @@ export function MarketsGrid() {
           value={sort}
           onChange={(e) => setSort(e.target.value as SortMode)}
         >
-          <option value="volume">Sort: Volume</option>
+          <option value="volume">Sort: Most active</option>
+          <option value="ending">Sort: Ending soon</option>
           <option value="newest">Sort: Newest</option>
         </select>
       </div>

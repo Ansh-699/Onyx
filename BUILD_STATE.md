@@ -1418,3 +1418,61 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
   - `tsc --noEmit` clean; browser sweep 6/6 routes 200 ( / , /markets with
     the "Trading now" lobby, /create, /portfolio, /demo/mev, and a seeded
     v2 market page); /api/fixtures + /api/scores probed live earlier.
+
+## 2026-07-12 — "make it feel alive": real seeded activity + AMM-first narrative + UI density
+
+- **Session-start hang fixed at the root** (`app/src/lib/tx.ts`): the
+  websocket confirm stays the fast path, but an HTTP status poll now runs
+  beside it as the authority — re-broadcasts the raw tx every ~5s, detects
+  blockhash expiry ("wallet approval took too long"), hard 75s cap with the
+  signature + explorer link in the error. WS flake can no longer spin the
+  UI forever. `onStartSession` routes through the shared helper
+  (`extraSigners` partial-sign) with staged busy labels; faucet call runs
+  concurrently with the config fetch.
+- **`app/scripts/seed_activity.ts`** (idempotent, re-runnable): 6 persisted
+  trader wallets + 1 demo wallet (`_keys/`, gitignored — verified never
+  committed; no SOL airdrops, admin transfer + owned mint only). ~100 real
+  swaps across 9 markets — organic two-sided randomized flow with mild
+  per-market leans; prices landed 34–95¢, custody 170–650 tUSDC/market,
+  fees-derived volume 42–193 tUSDC/market. Demo wallet: 2 live positions,
+  a settled WIN on France–Morocco (real validate_stat settle
+  `2VyngUpFPgHV…` + redeem receipt `4Yr4wmHePufq…`) and a settled LOSS
+  (`pFkYxhh4xctQ…`, position honestly worth zero; opposing traders
+  redeemed). Every swap recorded (price point + sig) to
+  `app/.data/price-history.json` (gitignored).
+- **Honest data layer**: `AmmPoolSummary` +fees/feeBps/seed with LIVE ER
+  re-reads for delegated pools (lobby prices no longer the frozen base
+  snapshot); `volumeFromFees()` (fees × 10⁴ / fee_bps — derived, never
+  stored); `getAmmPositionCounts` dual-scan with PDA re-derivation;
+  `listAmmPositionsForOwner` dual-scan + live ER values (portfolio now
+  shows delegated positions); `/api/history` (recorded + 60s live-sampled
+  price points, trades with sigs); `/api/stats` (volume, open interest,
+  unique traders, settled).
+- **Lobby**: default "Markets" tab = Open ∪ Trading-now, curated (named
+  fixture + pool + future deadline; everything else stays in Archive —
+  hidden, never deleted); cards with flags, big implied %, real sparkline,
+  volume/traders/depth; protocol stats strip; sorts Most active / Ending
+  soon / Newest. Seeded market-making disclosed in the strip + tooltips.
+- **Market detail**: two natural-flow columns (dead-space layout fixed),
+  price-history chart + recent-trades feed (recorded on-chain data, sigs
+  link to explorer), volume + traders on the price panel, LiquidButton
+  primaries, slippage control always visible ("enforced on-chain").
+- **AMM-first narrative**: hero → "Trade prediction markets in real time."
+  + ⚡ Powered by MagicBlock badge; featured pillar = session-key
+  real-time trading; sealed/MEV demoted to a labeled "Advanced" pillar;
+  How-it-works = session lifecycle; /create defaults to AMM; landing
+  volume stat now includes AMM (fees-derived) volume.
+- **Regression ALL GREEN**: tsc clean; ammMath 15/15; production build;
+  sealed `verify-flow.ts` PASS end-to-end on the new tx.ts (batch match +
+  real validate_stat settle + claim); browser-driven AMM proof (see below).
+
+### Demo-day runbook (before recording the video)
+1. `cd app && bun scripts/seed_amm_markets.ts` — fresh markets on the
+   then-current fixture window (old ones expire at kickoff).
+2. `bun scripts/seed_activity.ts` — re-seeds depth/prices/positions on
+   whatever is active; adds more history. Idempotent.
+3. Keep one market per state on screen: open+trading (fresh seed), live
+   (if a fixture is in play), settled WIN + settled LOSS (already on the
+   demo wallet; re-run creates fresh ones if those aged out).
+4. Demo wallet import secret prints at the end of seed_activity —
+   terminal only, never committed.

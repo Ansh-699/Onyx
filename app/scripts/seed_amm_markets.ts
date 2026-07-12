@@ -82,7 +82,7 @@ async function main() {
   await send([admin], [
     createAssociatedTokenAccountIdempotentInstruction(admin.publicKey, adminAta, admin.publicKey, usdcMint),
     createMintToInstruction(usdcMint, adminAta, admin.publicKey, LP_SEED * BigInt(capped.length)),
-  ], `mint ${capped.length * 2} tUSDC LP capital to admin`);
+  ], `mint ${(LP_SEED * BigInt(capped.length)) / 1_000_000n} tUSDC LP capital to admin`);
 
   const created: string[] = [];
   for (const plan of capped) {

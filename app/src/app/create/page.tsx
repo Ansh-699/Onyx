@@ -68,7 +68,7 @@ export default function CreatePage() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connected } = useWallet();
 
-  const [marketType, setMarketType] = useState<"sealed" | "amm">("sealed");
+  const [marketType, setMarketType] = useState<"sealed" | "amm">("amm");
   const [fixtureId, setFixtureId] = useState<number>(DEMO_FIXTURE.fixtureId);
   const [statKey, setStatKey] = useState<number>(DEMO_FIXTURE.statKey);
   const [combined, setCombined] = useState(false);
@@ -234,8 +234,8 @@ export default function CreatePage() {
         <label className={styles.field}>
           <span>Market type</span>
           <select value={marketType} onChange={(e) => setMarketType(e.target.value as "sealed" | "amm")} data-testid="create-market-type">
-            <option value="sealed">Sealed batch — MEV-proof commit/reveal, uniform clearing price</option>
-            <option value="amm">AMM — continuous trading, sell anytime, real seeded liquidity</option>
+            <option value="amm">Trade anytime (AMM) — continuous prices, instant on the Ephemeral Rollup</option>
+            <option value="sealed">Advanced: sealed batch — MEV-proof commit/reveal, uniform clearing price</option>
           </select>
         </label>
 

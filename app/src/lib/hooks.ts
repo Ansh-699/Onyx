@@ -19,6 +19,7 @@ import {
   getAmmPool,
   getAmmPosition,
   getAmmPoolsForMarkets,
+  getAmmPositionCounts,
   type AmmPoolSummary,
   listAmmPositionsForOwner,
   type OnChainMarket,
@@ -218,18 +219,78 @@ export function useAmmPoolMarkets(marketPdas: string[] | undefined) {
   });
 }
 
-/** Every AmmPosition a wallet owns. Base owner-scan, so a position currently
- * delegated to the ER is temporarily absent here (owned by the Delegation
- * Program while delegated) and reappears after undelegation — the live view
- * of a delegated position is on its market page, which routes reads to the
- * ER. Honest limitation, documented in the portfolio section's footer. */
+/** Every AmmPosition a wallet owns — dual scan (base + ER-delegated with
+ * live ER values), so an active session trader's delegated positions show in
+ * the portfolio with what they actually hold right now. */
 export function useAmmPositionsForOwner(owner: PublicKey | null) {
-  return useQuery<OnChainAmmPosition[]>({
+  return useQuery<(OnChainAmmPosition & { delegated: boolean })[]>({
     queryKey: ["ammPositions", owner?.toBase58()],
     queryFn: () => listAmmPositionsForOwner(owner!),
     refetchInterval: 15_000,
     placeholderData: keepPreviousData,
     enabled: !!owner,
+  });
+}
+
+/** Unique-trader counts per market (dual-scan, PDA-verified) — real position owners. */
+export function useAmmTraderCounts(marketPdas: string[] | undefined) {
+  const key = marketPdas?.join(",") ?? "";
+  return useQuery<{ perMarket: Map<string, number>; uniqueTraders: number }>({
+    queryKey: ["ammTraders", key],
+    queryFn: () => getAmmPositionCounts(marketPdas!),
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
+    enabled: !!marketPdas && marketPdas.length > 0,
+  });
+}
+
+export interface PoolHistorySeries {
+  pool: string;
+  points: { t: number; priceA: number }[];
+  trades: { t: number; side: number; dir: number; amountIn: string; sig: string }[];
+}
+
+/**
+ * Recorded + live-sampled price history and trades for AMM markets — every
+ * point a real on-chain read, every trade a real signature (see
+ * /api/history). Keyed by MARKET pda.
+ */
+export function useAmmPriceHistory(marketPdas: string[] | undefined) {
+  const key = marketPdas?.join(",") ?? "";
+  return useQuery<Record<string, PoolHistorySeries>>({
+    queryKey: ["ammHistory", key],
+    queryFn: async () => {
+      const res = await fetch(`/api/history?markets=${key}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`history ${res.status}`);
+      const body = await res.json();
+      return body.series ?? {};
+    },
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
+    enabled: !!marketPdas && marketPdas.length > 0,
+  });
+}
+
+export interface ProtocolStats {
+  volume: string;
+  openInterest: string;
+  traders: number;
+  settled: number;
+  markets: number;
+}
+
+/** Protocol-wide totals (live on-chain aggregates, 5-min server cache). */
+export function useProtocolStats() {
+  return useQuery<ProtocolStats>({
+    queryKey: ["protocolStats"],
+    queryFn: async () => {
+      const res = await fetch("/api/stats", { cache: "no-store" });
+      if (!res.ok) throw new Error(`stats ${res.status}`);
+      return res.json();
+    },
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    placeholderData: keepPreviousData,
   });
 }
 

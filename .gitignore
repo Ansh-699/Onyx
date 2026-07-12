@@ -9,6 +9,8 @@ dist/
 .env.*
 !.env.example
 _keys/
+# local on-chain samples (price history / recorded trades) — never committed
+app/.data/
 *.keypair.json
 *keypair*.json
 *-keypair.json

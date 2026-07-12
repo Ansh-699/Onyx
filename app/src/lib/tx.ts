@@ -4,26 +4,111 @@
 // OWN RPC and silently defeat ER routing (a swap meant for the Ephemeral
 // Rollup would land on base, or nowhere). One implementation, one place to
 // keep that discipline.
+//
+// Confirmation strategy (the "infinite spinner" fix): the websocket
+// confirmTransaction stays the FAST path, but browser websockets to devnet
+// drop routinely and web3.js then waits forever — so an HTTP status poll
+// runs alongside it as the authority: it re-broadcasts the raw tx until it
+// lands, detects blockhash expiry (the wallet-approval-took-too-long case),
+// and enforces a hard timeout. Websocket errors are never trusted to fail a
+// tx; only the poll (or an on-chain err) decides failure.
 
 import type { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 
 export type SignTransactionFn = <T extends Transaction>(tx: T) => Promise<T>;
 
-/** Wallet-signed path: one popup. feePayer = the wallet. */
+const CONFIRM_TIMEOUT_MS = 75_000;
+const POLL_MS = 3_000;
+const REBROADCAST_MS = 5_000;
+
+const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+
+async function broadcastAndConfirm(
+  conn: Connection,
+  raw: Buffer | Uint8Array,
+  blockhash: string,
+  lastValidBlockHeight: number,
+): Promise<string> {
+  const sig = await conn.sendRawTransaction(raw, { skipPreflight: true });
+  return await new Promise<string>((resolve, reject) => {
+    let done = false;
+    const finish = (fn: () => void) => {
+      if (!done) {
+        done = true;
+        fn();
+      }
+    };
+    const txFailed = (err: unknown) =>
+      finish(() => reject(new Error(`Transaction ${sig} failed: ${JSON.stringify(err)}`)));
+
+    // Fast path. Rejections here are NOT authoritative (WS flake ≠ failure).
+    conn
+      .confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed")
+      .then((conf) => (conf.value.err ? txFailed(conf.value.err) : finish(() => resolve(sig))))
+      .catch(() => {});
+
+    // Authority path: status poll + re-broadcast + expiry + hard cap.
+    (async () => {
+      const t0 = Date.now();
+      let lastSend = t0;
+      while (!done && Date.now() - t0 < CONFIRM_TIMEOUT_MS) {
+        await new Promise((r) => setTimeout(r, POLL_MS));
+        if (done) return;
+        try {
+          const st = (await conn.getSignatureStatuses([sig])).value[0];
+          if (st?.err) return txFailed(st.err);
+          if (st?.confirmationStatus === "confirmed" || st?.confirmationStatus === "finalized") {
+            return finish(() => resolve(sig));
+          }
+          if (!st) {
+            const height = await conn.getBlockHeight("confirmed");
+            if (height > lastValidBlockHeight) {
+              return finish(() =>
+                reject(
+                  new Error(
+                    "Transaction expired before it could land — usually the wallet approval took too long. Nothing was executed; please try again.",
+                  ),
+                ),
+              );
+            }
+            if (Date.now() - lastSend >= REBROADCAST_MS) {
+              lastSend = Date.now();
+              await conn.sendRawTransaction(raw, { skipPreflight: true }).catch(() => {});
+            }
+          }
+        } catch {
+          // transient RPC error — keep polling until the hard cap
+        }
+      }
+      finish(() =>
+        reject(
+          new Error(
+            `No confirmation after ${CONFIRM_TIMEOUT_MS / 1000}s — devnet may be congested. Check ${explorerTx(sig)} before retrying.`,
+          ),
+        ),
+      );
+    })();
+  });
+}
+
+/**
+ * Wallet-signed path: one popup. feePayer = the wallet. `extraSigners` are
+ * partial-signed BEFORE the wallet popup (e.g. the ephemeral session key
+ * co-signing create_session).
+ */
 export async function sendViaWallet(
   conn: Connection,
   tx: Transaction,
   publicKey: PublicKey,
   signTransaction: SignTransactionFn,
+  extraSigners: Keypair[] = [],
 ): Promise<string> {
   const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   tx.feePayer = publicKey;
+  for (const s of extraSigners) tx.partialSign(s);
   const signed = await signTransaction(tx);
-  const sig = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: true });
-  const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-  if (conf.value.err) throw new Error(`Transaction ${sig} failed: ${JSON.stringify(conf.value.err)}`);
-  return sig;
+  return broadcastAndConfirm(conn, signed.serialize(), blockhash, lastValidBlockHeight);
 }
 
 /**
@@ -35,8 +120,5 @@ export async function sendViaKeypair(conn: Connection, tx: Transaction, signer: 
   tx.recentBlockhash = blockhash;
   tx.feePayer = signer.publicKey;
   tx.sign(signer);
-  const sig = await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
-  const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-  if (conf.value.err) throw new Error(`Transaction ${sig} failed: ${JSON.stringify(conf.value.err)}`);
-  return sig;
+  return broadcastAndConfirm(conn, tx.serialize(), blockhash, lastValidBlockHeight);
 }

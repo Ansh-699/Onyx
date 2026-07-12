@@ -381,6 +381,18 @@ This project's whole thesis is "verify, don't trust" — so here's exactly
 where that does and doesn't extend, including the parts that took
 iteration to get right:
 
+- **AMM market activity is seeded market-making, disclosed in-product.**
+  The prices, volumes, trader counts, and price-history charts you see come
+  from real on-chain swaps executed by a set of devnet wallets funded by
+  this build's admin key (`app/scripts/seed_activity.ts`) — genuinely
+  two-sided randomized flow, every trade a real `swap_amm` with on-chain
+  slippage enforcement, every history point a live read of pool reserves,
+  every feed row linking to its transaction. Nothing is written into a
+  price field anywhere (no such field exists); volume is *derived* from the
+  pool's on-chain `fees_accrued`. The lobby stats strip, card tooltips, and
+  the trades feed all carry a "seeded market-making disclosed" note — same
+  treatment as the sealed flow's house counterparty below.
+
 - **Sealed-market demo liquidity is seeded, not organic.** A solo bettor's
   sealed order needs a counterparty for the batch match to produce a fill.
   In this build, [`app/src/app/api/house-counter/route.ts`](app/src/app/api/house-counter/route.ts)

@@ -136,3 +136,54 @@
   font-size: 0.75rem;
   color: var(--text-faint);
 }
+
+/* ---------- recent trades feed ---------- */
+
+.tradeList {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tradeRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.82rem;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.tradeRow:last-child {
+  border-bottom: none;
+}
+
+.tradeSide {
+  font-weight: 600;
+  min-width: 96px;
+}
+
+.tradeSide[data-side="1"] {
+  color: var(--green);
+}
+
+.tradeSide[data-side="2"] {
+  color: var(--red);
+}
+
+.tradeAmt {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.tradeWhen {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 0.74rem;
+}
+
+.tradeLink {
+  font-size: 0.74rem;
+}

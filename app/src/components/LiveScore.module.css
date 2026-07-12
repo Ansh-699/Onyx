@@ -57,6 +57,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  /* narrow screens: wrap instead of squeezing the caption to 1ch columns */
+  flex-wrap: wrap;
+}
+
+.note > span {
+  min-width: 0;
 }
 
 .statRow {

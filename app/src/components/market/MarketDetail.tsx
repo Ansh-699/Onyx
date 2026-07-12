@@ -33,6 +33,7 @@ import { SealedOrderPanel } from "@/components/SealedOrderPanel";
 import { SettleClaimPanel } from "@/components/SettleClaimPanel";
 import { PhaseTimeline } from "./PhaseTimeline";
 import { PricePanel, AmmPricePanel } from "./PricePanel";
+import { PriceHistoryCard, RecentTradesCard } from "./ActivityCards";
 import { ErTradingPanel } from "./ErTradingPanel";
 import { AmmTradingPanel } from "./AmmTradingPanel";
 import { shortAddr } from "./format";
@@ -140,7 +141,7 @@ export function MarketDetail({ pda }: { pda: string }) {
       )}
 
       <div className={styles.cols} data-sealed={sealed || amm}>
-        <div className={styles.areaPrice}>
+        <div className={styles.colMain}>
           {/* AMM markets price off pool reserves; the sealed panel's batch-
               derived figures read 0/empty there and looked broken next to
               the trade panel's real ¢ price. */}
@@ -149,42 +150,49 @@ export function MarketDetail({ pda }: { pda: string }) {
           ) : (
             <PricePanel market={market} connection={query.connection} />
           )}
+          {amm && (
+            <>
+              <PriceHistoryCard marketPda={market.pda} />
+              <RecentTradesCard marketPda={market.pda} />
+            </>
+          )}
+          {!(sealed || amm) && <SettleClaimPanel market={market} isAmm={amm} />}
         </div>
-        {amm && routedPool.data && (
-          <div className={styles.areaTrade}>
-            <AmmTradingPanel
-              market={market}
-              pool={routedPool.data}
-              isDelegated={routedPool.isDelegated}
-              connection={routedPool.connection}
-            />
-          </div>
-        )}
-        {sealed && (
-          <div className={styles.areaTrade}>
-            <ErTradingPanel market={market} isDelegated={query.isDelegated} fqdn={query.fqdn} connection={query.connection} />
-            <details className={erStyles.classicToggle}>
-              <summary>Show classic sealed-order flow (non-ER, always available)</summary>
-              <div className={erStyles.classicBody}>
-                {query.isDelegated && (
-                  <p className={erStyles.classicWarning}>
-                    This market is currently delegated to the Ephemeral Rollup for fast trading. The classic flow
-                    below only reads/writes base devnet, so it&apos;s seeing a snapshot frozen at delegation time —
-                    avoid placing new classic orders until the market moves back to base. If you already have a
-                    classic order here, revealing it may fail while the market is delegated (confirmed live: the
-                    first reveal after commit close tries to advance the market&apos;s phase, which base devnet
-                    rejects while the market is owned by the Ephemeral Rollup) — if that happens, your locked
-                    collateral is still recoverable via a refund once the reveal window closes, not stuck.
-                  </p>
-                )}
-                <SealedOrderPanel market={market} />
+        {(sealed || amm) && (
+          <div className={styles.colSide}>
+            {amm && routedPool.data && (
+              <AmmTradingPanel
+                market={market}
+                pool={routedPool.data}
+                isDelegated={routedPool.isDelegated}
+                connection={routedPool.connection}
+              />
+            )}
+            {sealed && (
+              <div>
+                <ErTradingPanel market={market} isDelegated={query.isDelegated} fqdn={query.fqdn} connection={query.connection} />
+                <details className={erStyles.classicToggle}>
+                  <summary>Show classic sealed-order flow (non-ER, always available)</summary>
+                  <div className={erStyles.classicBody}>
+                    {query.isDelegated && (
+                      <p className={erStyles.classicWarning}>
+                        This market is currently delegated to the Ephemeral Rollup for fast trading. The classic flow
+                        below only reads/writes base devnet, so it&apos;s seeing a snapshot frozen at delegation time —
+                        avoid placing new classic orders until the market moves back to base. If you already have a
+                        classic order here, revealing it may fail while the market is delegated (confirmed live: the
+                        first reveal after commit close tries to advance the market&apos;s phase, which base devnet
+                        rejects while the market is owned by the Ephemeral Rollup) — if that happens, your locked
+                        collateral is still recoverable via a refund once the reveal window closes, not stuck.
+                      </p>
+                    )}
+                    <SealedOrderPanel market={market} />
+                  </div>
+                </details>
               </div>
-            </details>
+            )}
+            <SettleClaimPanel market={market} isAmm={amm} />
           </div>
         )}
-        <div className={styles.areaSettle}>
-          <SettleClaimPanel market={market} isAmm={amm} />
-        </div>
       </div>
     </div>
   );
@@ -207,14 +215,13 @@ function DetailSkeleton({ error }: { error: boolean }) {
       <div className="skeleton" style={{ height: 132, marginTop: 24 }} />
       <div className="skeleton" style={{ height: 84, marginTop: 16 }} />
       <div className={styles.cols}>
-        <div className={styles.areaPrice}>
+        <div className={styles.colMain}>
           <div className="skeleton" style={{ height: 360 }} />
-        </div>
-        <div className={styles.areaTrade}>
-          <div className="skeleton" style={{ height: 420 }} />
-        </div>
-        <div className={styles.areaSettle}>
           <div className="skeleton" style={{ height: 200 }} />
+        </div>
+        <div className={styles.colSide}>
+          <div className="skeleton" style={{ height: 420 }} />
+          <div className="skeleton" style={{ height: 160 }} />
         </div>
       </div>
     </div>
