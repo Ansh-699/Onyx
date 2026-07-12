@@ -1,226 +1,281 @@
-// Landing page — server component. The stat strip reads REAL devnet state via
-// listMarkets() at request time (force-dynamic); if the RPC read fails the
-// strip is simply omitted rather than ever showing fake numbers.
+// Landing page — server component. Centered hero with a liquid-glass CTA,
+// then a framed LIVE app preview: the market cards inside it are real
+// devnet markets fetched at request time (real prices, real volume) — the
+// reference sites embed a screenshot; we embed the product. On RPC failure
+// the preview/stats are omitted, never faked.
 
 import Link from "next/link";
 import {
   listMarkets,
   getAmmPoolsForMarkets,
   volumeFromFees,
+  STATUS_OPEN,
+  STATUS_LIVE,
   STATUS_SETTLED,
   STATUS_CLAIMED,
+  type OnChainMarket,
+  type AmmPoolSummary,
 } from "@/lib/onchain";
-import { LiquidButton } from "@/components/ui/liquid-glass-button";
+import { describeMarketPredicate } from "@/lib/statKeys";
+import { getFixtureInfo, primeLiveFixtures } from "@/lib/fixtureMeta";
+import { getLiveFixtures } from "@/lib/txlineFixtures";
+import { flagFor } from "@/lib/flags";
+import { Reveal } from "@/components/Reveal";
 import styles from "./landing.module.css";
 
 export const dynamic = "force-dynamic";
 
-interface LiveStats {
-  totalMarkets: number;
-  settledCount: number;
-  /** Sealed matched volume + AMM volume derived from on-chain pool fees, raw 6-decimal units. */
-  volumeRaw: bigint;
+interface PreviewMarket {
+  pda: string;
+  fixture: string;
+  title: string;
+  yesCents: number;
+  volume: string;
 }
 
-async function getLiveStats(): Promise<LiveStats | null> {
+interface LiveData {
+  totalMarkets: number;
+  settledCount: number;
+  volumeRaw: bigint;
+  preview: PreviewMarket[];
+}
+
+async function getLiveData(): Promise<LiveData | null> {
   try {
+    // Server-side render: the live-fixture overlay is normally primed by a
+    // client hook — prime it here so preview cards get real team names.
+    await getLiveFixtures().then(primeLiveFixtures).catch(() => {});
     const markets = await listMarkets();
+    const pools = await getAmmPoolsForMarkets(markets.map((m) => m.pda));
     let volumeRaw = 0n;
     let settledCount = 0;
     for (const m of markets) {
       volumeRaw += m.totalSideA + m.totalSideB;
       if (m.status === STATUS_SETTLED || m.status === STATUS_CLAIMED) settledCount++;
     }
-    // AMM volume is real and derived, never stored: fees × 10000 / fee_bps.
-    const pools = await getAmmPoolsForMarkets(markets.map((m) => m.pda));
     for (const p of pools.values()) volumeRaw += volumeFromFees(p.feesAccrued, p.feeBps);
-    return { totalMarkets: markets.length, settledCount, volumeRaw };
+
+    // Top 3 live, named markets by real volume — the preview cards.
+    const now = Math.floor(Date.now() / 1000);
+    const candidates = markets
+      .filter(
+        (m) =>
+          (m.status === STATUS_OPEN || m.status === STATUS_LIVE) &&
+          Number(m.deadline) > now &&
+          pools.has(m.pda) &&
+          getFixtureInfo(Number(m.fixtureId)) !== null,
+      )
+      .map((m) => ({ m, pool: pools.get(m.pda)! }))
+      .sort((a, b) => Number(volumeFromFees(b.pool.feesAccrued, b.pool.feeBps) - volumeFromFees(a.pool.feesAccrued, a.pool.feeBps)));
+
+    const preview = candidates.slice(0, 3).map(({ m, pool }) => previewCard(m, pool));
+    return { totalMarkets: markets.length, settledCount, volumeRaw, preview };
   } catch {
-    // Devnet RPC hiccup — render the page without the stat strip. Never fake.
-    return null;
+    return null; // RPC hiccup — hero renders without live sections. Never fake.
   }
 }
 
-/** 6-decimal raw units -> human string, e.g. 12_500_000n -> "12.50". */
-function formatUsdc(raw: bigint): string {
-  const whole = raw / 1_000_000n;
-  const cents = (raw % 1_000_000n) / 10_000n;
-  return `${whole.toLocaleString("en-US")}.${cents.toString().padStart(2, "0")}`;
+function previewCard(m: OnChainMarket, pool: AmmPoolSummary): PreviewMarket {
+  const info = getFixtureInfo(Number(m.fixtureId))!;
+  const total = pool.reserveA + pool.reserveB;
+  const yesCents = total > 0n ? Math.round(Number((pool.reserveB * 1000n) / total) / 10) : 50;
+  const vol = Number(volumeFromFees(pool.feesAccrued, pool.feeBps)) / 1e6;
+  return {
+    pda: m.pda,
+    fixture: `${flagFor(info.participant1)} ${info.participant1} vs ${info.participant2} ${flagFor(info.participant2)}`.trim(),
+    title: describeMarketPredicate(m, info),
+    yesCents,
+    volume: vol.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+  };
 }
 
-const FEATURED_PILLAR = {
-  tag: "Real-time",
-  title: "Trade in real time, one signature",
-  body: (
-    <>
-      One wallet signature starts a trading session: it funds your position and
-      mints a scoped MagicBlock session key. Every trade after that confirms in
-      ~1 second on an ephemeral rollup — no popups, no gas. The session key can
-      only swap; it can <strong>never</strong> withdraw your funds, and that
-      scope is enforced by the on-chain program, not the UI.
-    </>
-  ),
-};
+function formatUsdc(raw: bigint): string {
+  const whole = raw / 1_000_000n;
+  return whole.toLocaleString("en-US");
+}
 
-const PILLARS = [
+const FEATURES = [
   {
-    tag: "Settlement",
+    icon: "⚡",
+    title: "1-click trading",
+    body: "One approval mints a scoped session key — every trade after that is instant, popup-free, and gas-free. The key can only trade; it can never withdraw.",
+  },
+  {
+    icon: "🚀",
+    title: "~1s flash trades",
+    body: "Swaps run on MagicBlock's Ephemeral Rollup and confirm in about a second, with fees sponsored by the validator.",
+  },
+  {
+    icon: "⚖️",
     title: "Trustless settlement",
-    body: "Outcomes are decided by a CPI into TxODDS's own on-chain validate_stat against an anchored Merkle root — never by ONYX. No admin key, no off-chain resolver: the same proof in always produces the same payout out.",
+    body: "Outcomes are decided by a CPI into TxODDS's own validate_stat oracle against a Merkle proof — never by an admin key.",
   },
   {
-    tag: "Proof",
+    icon: "🧾",
     title: "Verifiable receipts",
-    body: "Every settlement is independently checkable from public RPC alone: the oracle's return value, its logs, and the market account all have to agree — with zero trust in ONYX's UI.",
+    body: "Every settlement is independently checkable from public RPC alone — the oracle's return value, its logs, and the market account must all agree.",
   },
   {
-    tag: "Markets",
-    title: "Parametric props",
-    body: "Markets on any TxLINE stat — goals, corners, cards — via a threshold predicate over per-fixture data. Not just “who wins.”",
+    icon: "🔄",
+    title: "Sell anytime",
+    body: "The pool is the counterparty (CPMM over outcome tokens) — buy AND sell at any moment before kickoff, with slippage protection enforced on-chain.",
   },
   {
-    tag: "Advanced",
-    title: "We also support MEV-proof sealed markets",
-    body: "For order-flow privacy, a second market type keeps every bet a 32-byte commitment until a batch clears at one uniform price — nothing to front-run or copy-trade. See “Why sealed orders?” for the live demo.",
+    icon: "🕶️",
+    title: "MEV-proof sealed mode",
+    body: "An advanced second market type keeps bets as commitments until a batch clears at one uniform price — nothing to front-run.",
   },
 ] as const;
 
-const STEPS = [
+const HOW = [
   {
-    name: "Start a session",
-    body: "One wallet signature funds your position and mints a scoped session key — it can trade, never withdraw.",
+    n: "1",
+    title: "Add funds",
+    body: "Free devnet USDC from the faucet, or swap devnet SOL — then one approval moves funds into a market and switches on 1-click trading.",
   },
   {
-    name: "Trade instantly",
-    body: "Buy AND sell anytime against the pool. Swaps confirm in ~1s on MagicBlock's Ephemeral Rollup — popup-free, gas-free.",
+    n: "2",
+    title: "Trade instantly",
+    body: "Buy Yes or No at live pool prices. Every trade confirms in ~1s with no popups, no gas — sell the moment the price moves your way.",
   },
   {
-    name: "Oracle settles",
-    body: "A CPI into TxLINE's validate_stat decides the outcome from a Merkle proof of the real match stats — never ONYX.",
-  },
-  {
-    name: "Redeem on-chain",
-    body: "Winning tokens redeem 1:1 from the market vault on base. Every payout is a public, checkable receipt.",
+    n: "3",
+    title: "Withdraw winnings",
+    body: "The oracle settles the market from real match stats; winnings appear in your Vault and one approval sends them to your wallet.",
   },
 ] as const;
 
 export default async function LandingPage() {
-  const stats = await getLiveStats();
+  const live = await getLiveData();
 
   return (
     <div className={styles.page}>
-      {/* ---- Hero: the one liquid-glass brand moment on this page ---- */}
+      {/* ---- hero: centered, into.space structure, ONYX glass ---- */}
       <section className={styles.hero}>
-        <div className={styles.heroGlass}>
-          <div className={styles.heroContent}>
-            <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap" }}>
-              <span className="pill" data-tone="green">
-                <span className={styles.liveDot} aria-hidden="true" />
-                Live on Solana devnet
-              </span>
-              <span className="pill" data-tone="accent">⚡ Powered by MagicBlock</span>
-            </span>
-            <h1 className={styles.heroTitle}>
-              Trade prediction markets in real time.
-            </h1>
-            <p className={styles.heroSub}>
-              Buy and sell World Cup outcomes anytime — near-instant and
-              gas-free on MagicBlock ephemeral rollups, one signature to start
-              a session, settled on-chain by TxODDS&apos;s own oracle. Every
-              price, trade, and payout is verifiable from public RPC.
-            </p>
-            <div className={styles.ctas}>
-              <LiquidButton asChild size="lg" className={styles.ctaLiquid}>
-                <Link href="/markets">Launch app →</Link>
-              </LiquidButton>
-              <Link href="/demo/mev" className={styles.ctaGhost}>
-                Why sealed orders?
-              </Link>
-            </div>
+        <div className={styles.heroInner}>
+          <div className={`${styles.heroItem} ${styles.d0}`}>
+            <span className={styles.wordmark}>ONYX</span>
           </div>
+          <div className={`${styles.badges} ${styles.heroItem} ${styles.d1}`}>
+            <span className="pill" data-tone="green">
+              <span className={styles.liveDot} aria-hidden />
+              Live on Solana devnet
+            </span>
+            <span className="pill" data-tone="accent">⚡ Powered by MagicBlock</span>
+          </div>
+          <h1 className={`${styles.heroTitle} ${styles.heroItem} ${styles.d2}`}>
+            Prediction markets
+            <br />
+            at flash speed.
+          </h1>
+          <p className={`${styles.heroSub} ${styles.heroItem} ${styles.d3}`}>
+            Buy and sell World Cup outcomes in ~1 second — one approval, then no popups, no gas.
+            Settled on-chain by a real oracle, verifiable by anyone.
+          </p>
+          <div className={`${styles.heroItem} ${styles.d4}`}>
+            <Link href="/markets" className={styles.heroCta}>
+              <span>Launch app →</span>
+            </Link>
+          </div>
+          <nav className={`${styles.pillNav} ${styles.heroItem} ${styles.d5}`} aria-label="Sections">
+            <Link href="/markets" data-primary="true">Markets</Link>
+            <Link href="/portfolio">Portfolio</Link>
+            <Link href="/create">Create</Link>
+            <Link href="/how-to-trade">How to trade</Link>
+          </nav>
+        </div>
+      </section>
 
-          {/* ---- Live stat readout — real devnet reads, omitted on RPC failure ---- */}
-          {stats && (
-            <div className={styles.statStrip} aria-label="Live devnet statistics">
-              <div className={styles.stat}>
-                <span className={styles.statValue}>{stats.totalMarkets}</span>
-                <span className={styles.statLabel}>markets on-chain</span>
-              </div>
-              <div className={styles.stat}>
-                <span className={styles.statValue}>{stats.settledCount}</span>
-                <span className={styles.statLabel}>settled &amp; claimed</span>
-              </div>
-              <div className={styles.stat}>
-                <span className={styles.statValue}>
-                  {formatUsdc(stats.volumeRaw)}
-                  <span className={styles.statUnit}> test-USDC</span>
-                </span>
-                <span className={styles.statLabel}>traded volume (devnet)</span>
-              </div>
-              <span className={`faint ${styles.statCaption}`}>
-                live from devnet — read from the ONYX program at page load
+      {/* ---- live app preview: REAL markets, real prices ---- */}
+      {live && live.preview.length > 0 && (
+        <Reveal>
+          <section className={styles.previewFrame} aria-label="Live markets preview">
+            <div className={styles.previewChrome}>
+              <span className={styles.chromeDot} />
+              <span className={styles.chromeDot} />
+              <span className={styles.chromeDot} />
+              <span className={styles.chromeLabel}>live from devnet — these are real markets, click one</span>
+            </div>
+            <div className={styles.previewGrid}>
+              {live.preview.map((p) => (
+                <Link key={p.pda} href={`/market/${p.pda}`} className={styles.previewCard}>
+                  <span className={styles.previewFixture}>{p.fixture}</span>
+                  <span className={styles.previewTitle}>{p.title}</span>
+                  <span className={styles.previewPrices}>
+                    <span className={styles.pYes}>Yes {p.yesCents}¢</span>
+                    <span className={styles.pNo}>No {100 - p.yesCents}¢</span>
+                  </span>
+                  <span className={styles.previewVol}>{p.volume} USDC traded</span>
+                </Link>
+              ))}
+            </div>
+            <div className={styles.previewStats}>
+              <span>
+                <strong>{live.totalMarkets}</strong> markets on-chain
+              </span>
+              <span>
+                <strong>{live.settledCount}</strong> settled &amp; verified
+              </span>
+              <span>
+                <strong>{formatUsdc(live.volumeRaw)}</strong> USDC traded (devnet)
               </span>
             </div>
-          )}
-        </div>
-      </section>
+          </section>
+        </Reveal>
+      )}
 
-      {/* ---- Why ONYX: one featured claim + a compact secondary list,
-             deliberately not a uniform four-card icon grid ---- */}
+      {/* ---- feature grid ---- */}
       <section className={styles.section}>
-        <p className={styles.sectionLabel}>Why ONYX</p>
-        <h2 className={styles.sectionTitle}>Verify, don&apos;t trust.</h2>
-
-        <div className={styles.featured}>
-          <span className="pill" data-tone="accent">
-            {FEATURED_PILLAR.tag}
-          </span>
-          <h3 className={styles.featuredTitle}>{FEATURED_PILLAR.title}</h3>
-          <p className={`muted ${styles.featuredBody}`}>{FEATURED_PILLAR.body}</p>
-        </div>
-
-        <ul className={styles.pillarList}>
-          {PILLARS.map((p) => (
-            <li key={p.title} className={styles.pillarRow}>
-              <span className={`pill ${styles.pillarTag}`} data-tone="accent">
-                {p.tag}
-              </span>
-              <div>
-                <h3 className={styles.pillarTitle}>{p.title}</h3>
-                <p className={`muted ${styles.pillarBody}`}>{p.body}</p>
+        <Reveal>
+          <h2 className={styles.sectionTitle}>Built different, provably.</h2>
+        </Reveal>
+        <div className={styles.featureGrid}>
+          {FEATURES.map((f, i) => (
+            <Reveal key={f.title} delay={(i % 3) * 90}>
+              <div className={styles.featureCard}>
+                <span className={styles.featureIcon} aria-hidden>
+                  {f.icon}
+                </span>
+                <h3>{f.title}</h3>
+                <p>{f.body}</p>
               </div>
-            </li>
+            </Reveal>
           ))}
-        </ul>
+        </div>
       </section>
 
-      {/* ---- How it works ---- */}
+      {/* ---- how it works ---- */}
       <section className={styles.section}>
-        <p className={styles.sectionLabel}>How it works</p>
-        <h2 className={styles.sectionTitle}>
-          Session-key trading, four steps.
-        </h2>
-        <ol className={styles.steps}>
-          {STEPS.map((s, i) => (
-            <li key={s.name} className={styles.step}>
-              <span className={styles.stepNum} aria-hidden="true">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <span className={styles.stepName}>{s.name}</span>
-              <span className={`muted ${styles.stepBody}`}>{s.body}</span>
-            </li>
+        <Reveal>
+          <h2 className={styles.sectionTitle}>How it works</h2>
+          <p className={styles.sectionSub}>Two wallet approvals total — everything in between is instant.</p>
+        </Reveal>
+        <div className={styles.howGrid}>
+          {HOW.map((s, i) => (
+            <Reveal key={s.n} delay={i * 110}>
+              <div className={styles.howCard}>
+                <span className={styles.howNum}>{s.n}</span>
+                <h3>{s.title}</h3>
+                <p>{s.body}</p>
+              </div>
+            </Reveal>
           ))}
-        </ol>
+        </div>
+        <Reveal>
+          <div className={styles.bottomCta}>
+            <Link href="/markets" className={styles.heroCta}>
+              <span>Start trading →</span>
+            </Link>
+          </div>
+        </Reveal>
       </section>
 
-      {/* ---- Honest footer ---- */}
+      {/* ---- honest footer ---- */}
       <footer className={styles.footNote}>
         <p className="muted">
-          Devnet build for the TxODDS World Cup Hackathon. Escrow uses
-          test-USDC (a devnet SPL token, 6 decimals — not real funds); match
-          data comes from TxLINE&apos;s free tier. Program{" "}
-          <span className="mono">4LpMz…18MB</span> — every settlement above is
-          checkable on public devnet RPC.
+          Devnet build for the TxODDS World Cup Hackathon. Escrow uses test-USDC (a devnet SPL token — not real
+          funds); match data comes from TxLINE. Program <span className="mono">4LpMz…18MB</span> — every
+          settlement above is checkable on public devnet RPC.
         </p>
       </footer>
     </div>

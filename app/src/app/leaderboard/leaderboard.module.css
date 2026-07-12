@@ -1,0 +1,55 @@
+.page {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.tableCard {
+  margin-top: 18px;
+  padding: 8px 20px;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 12px 10px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.table td {
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr {
+  transition: background 120ms ease;
+}
+
+.table tbody tr:hover {
+  background: var(--glass-tint);
+}
+
+.rank {
+  font-size: 1rem;
+  width: 44px;
+}
+
+.note {
+  margin-top: 12px;
+  font-size: 0.76rem;
+  color: var(--text-faint);
+}

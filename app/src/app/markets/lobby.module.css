@@ -499,3 +499,41 @@
   background: color-mix(in srgb, var(--red) 10%, transparent);
   color: var(--red);
 }
+
+/* ---------- category chips ---------- */
+
+.catRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.catBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 13px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.catBtn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.catBtn[data-active="true"] {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: transparent;
+  font-weight: 650;
+}

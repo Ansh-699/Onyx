@@ -88,3 +88,34 @@
     font-size: 0.82rem;
   }
 }
+
+/* Faucet — a button that must look identical to the link tabs beside it. */
+.navBtn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.navBtn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+/* USDC balance chip inside the Vault button. */
+.balanceChip {
+  margin-left: 7px;
+  padding: 1px 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  background: var(--glass-tint);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+}

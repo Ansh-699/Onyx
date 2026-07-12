@@ -12,6 +12,7 @@ import {
   getMarket,
   listSealedOrders,
   getConnection,
+  getConfigUsdcMint,
   getTradingAccount,
   listTradingAccountsForMarket,
   ammPoolPda,
@@ -227,6 +228,26 @@ export function useAmmPositionsForOwner(owner: PublicKey | null) {
     queryKey: ["ammPositions", owner?.toBase58()],
     queryFn: () => listAmmPositionsForOwner(owner!),
     refetchInterval: 15_000,
+    placeholderData: keepPreviousData,
+    enabled: !!owner,
+  });
+}
+
+/** Wallet's test-USDC balance (whole units), 30s poll — the nav Vault chip. */
+export function useWalletUsdc(owner: PublicKey | null) {
+  return useQuery<number>({
+    queryKey: ["walletUsdc", owner?.toBase58()],
+    queryFn: async () => {
+      const mint = await getConfigUsdcMint();
+      if (!mint) return 0;
+      const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
+      const ata = getAssociatedTokenAddressSync(mint, owner!);
+      return getConnection()
+        .getTokenAccountBalance(ata)
+        .then((r) => Number(r.value.amount) / 1e6)
+        .catch(() => 0);
+    },
+    refetchInterval: 30_000,
     placeholderData: keepPreviousData,
     enabled: !!owner,
   });

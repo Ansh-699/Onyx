@@ -1,0 +1,161 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(400px, 92vw);
+  padding: 22px 24px;
+  overflow-y: auto;
+  border-left: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(26px) saturate(1.6);
+  -webkit-backdrop-filter: blur(26px) saturate(1.6);
+  box-shadow: inset 1px 0 0 var(--glass-highlight), -32px 0 80px -40px var(--glass-shadow);
+  animation: slideIn 220ms cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer {
+    animation: none;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.close {
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--text);
+}
+
+.sectionLabel {
+  margin: 14px 0 8px;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--text-dim);
+}
+
+.walletList {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.walletBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-tint);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.walletBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+}
+
+.walletBtn img {
+  border-radius: 7px;
+}
+
+.notInstalled {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+
+.connecting {
+  margin: 12px 0 0;
+  font-size: 0.84rem;
+  color: var(--accent-strong);
+}
+
+.error {
+  margin: 12px 0 0;
+  font-size: 0.84rem;
+  color: var(--red);
+}
+
+.footNote {
+  margin: 22px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+.connectedBox {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.addrRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.addrRow img {
+  border-radius: 8px;
+}
+
+.connectedActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

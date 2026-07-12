@@ -129,6 +129,15 @@ interface Row {
 
 type StatusFilter = "markets" | "settled" | "archive";
 type SortMode = "volume" | "ending" | "newest";
+type Category = "all" | "trending" | "new" | "ending" | "goals" | "cards" | "corners";
+
+/** Stat-key bucket for the category chips: 1/2 goals · 3-6 cards · 7/8 corners. */
+function statBucket(statAKey: number): "goals" | "cards" | "corners" | null {
+  if (statAKey === 1 || statAKey === 2) return "goals";
+  if (statAKey >= 3 && statAKey <= 6) return "cards";
+  if (statAKey === 7 || statAKey === 8) return "corners";
+  return null;
+}
 
 function matchesStatusFilter(row: Row, filter: StatusFilter, now: number): boolean {
   // "Markets" = trading-now AND open together (one browsing tab), curated to
@@ -446,6 +455,7 @@ export function MarketsGrid() {
   const now = useNow();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("markets");
+  const [category, setCategory] = useState<Category>("all");
   const [sort, setSort] = useState<SortMode>("volume");
   // History (sparklines) + trader counts, only for markets that have pools.
   const pooledPdas = useMemo(
@@ -525,9 +535,34 @@ export function MarketsGrid() {
     [rows, now],
   );
 
+  // Category predicate needs the volume figure for "trending" — computed
+  // against the rows that survived the status filter, so counts stay honest.
+  const categoryFilter = useMemo(() => {
+    return (list: Row[], cat: Category): Row[] => {
+      if (cat === "all") return list;
+      if (cat === "new") {
+        return [...list].sort((a, b) => (b.market.createdSlot > a.market.createdSlot ? 1 : -1)).slice(0, 3);
+      }
+      if (cat === "ending") {
+        const cutoff = now / 1000 + 24 * 3600;
+        return list.filter((r) => Number(r.market.deadline) < cutoff && Number(r.market.deadline) * 1000 > now);
+      }
+      if (cat === "trending") {
+        const withVol = list.map((r) => {
+          const p = ammPools?.get(r.market.pda);
+          return { r, vol: p ? volumeFromFees(p.feesAccrued, p.feeBps) : r.market.totalSideA + r.market.totalSideB };
+        });
+        withVol.sort((a, b) => (b.vol > a.vol ? 1 : -1));
+        return withVol.slice(0, Math.max(3, Math.ceil(withVol.length / 2))).map((x) => x.r);
+      }
+      return list.filter((r) => statBucket(r.market.statAKey) === cat);
+    };
+  }, [ammPools, now]);
+
   const shownRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = rows.filter((r) => matchesStatusFilter(r, statusFilter, now));
+    list = categoryFilter(list, category);
     if (q) list = list.filter((r) => r.searchText.includes(q));
     const sorted = [...list];
     if (sort === "volume") {
@@ -552,7 +587,7 @@ export function MarketsGrid() {
       );
     }
     return sorted;
-  }, [rows, search, statusFilter, sort, ammPools, now]);
+  }, [rows, search, statusFilter, category, categoryFilter, sort, ammPools, now]);
 
   const loading = data === undefined && !isError;
   const filtersActive = search.trim() !== "" || statusFilter !== "markets";
@@ -665,6 +700,32 @@ export function MarketsGrid() {
           <option value="ending">Sort: Ending soon</option>
           <option value="newest">Sort: Newest</option>
         </select>
+      </div>
+
+      {/* category chips — a second filter axis over the status tabs */}
+      <div className={styles.catRow} role="group" aria-label="Filter markets by category">
+        {(
+          [
+            { id: "all", label: "All" },
+            { id: "trending", label: "🔥 Trending" },
+            { id: "new", label: "⭐ New" },
+            { id: "ending", label: "⏳ Ending soon" },
+            { id: "goals", label: "⚽ Goals" },
+            { id: "cards", label: "🟨 Cards" },
+            { id: "corners", label: "⛳ Corners" },
+          ] as { id: Category; label: string }[]
+        ).map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className={styles.catBtn}
+            data-active={category === c.id}
+            aria-pressed={category === c.id}
+            onClick={() => setCategory(c.id)}
+          >
+            {c.label}
+          </button>
+        ))}
       </div>
 
       <p className={styles.resultsMeta} aria-live="polite">
