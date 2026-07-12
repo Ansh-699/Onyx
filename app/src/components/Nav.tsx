@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletButton } from "./WalletButton";
 import { ThemeToggle } from "./ThemeToggle";
+import { VaultPanel } from "./VaultPanel";
 import styles from "./Nav.module.css";
 
 const LINKS = [
@@ -15,6 +18,8 @@ const LINKS = [
 
 export function Nav() {
   const pathname = usePathname();
+  const { connected } = useWallet();
+  const [vaultOpen, setVaultOpen] = useState(false);
   return (
     <header className={styles.nav}>
       <div className={styles.brand}>
@@ -36,8 +41,14 @@ export function Nav() {
       </nav>
       <div className={styles.wallet}>
         <ThemeToggle />
+        {connected && (
+          <button type="button" className="button" data-variant="ghost" onClick={() => setVaultOpen(true)} data-testid="nav-vault">
+            Vault
+          </button>
+        )}
         <WalletButton />
       </div>
+      <VaultPanel open={vaultOpen} onClose={() => setVaultOpen(false)} />
     </header>
   );
 }

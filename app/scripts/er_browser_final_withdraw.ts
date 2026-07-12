@@ -74,7 +74,7 @@ async function main() {
   await page.addInitScript(MOCK_PROVIDER_INIT);
   page.on("pageerror", (err) => console.log("[browser pageerror]", err.message));
 
-  await page.goto(`http://localhost:3000/market/${MARKET}`, { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto(`http://localhost:3000/market/${MARKET}`, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.click("text=Select Wallet", { timeout: 10000 });
   await page.waitForTimeout(400);
   await page.click("text=Phantom", { timeout: 10000 });

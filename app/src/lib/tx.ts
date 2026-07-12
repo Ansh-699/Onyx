@@ -23,7 +23,13 @@ const REBROADCAST_MS = 5_000;
 
 const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
 
-async function broadcastAndConfirm(
+/**
+ * Broadcast an already-fully-signed transaction and run the WS+poll confirm
+ * race. Exported for flows where the blockhash is fixed by a server partial
+ * signature (e.g. /api/buy-usdc) — re-fetching a blockhash there would
+ * invalidate the co-signer's signature.
+ */
+export async function broadcastAndConfirm(
   conn: Connection,
   raw: Buffer | Uint8Array,
   blockhash: string,

@@ -163,7 +163,7 @@ async function main() {
 
   // ---- STEP 1: create the AMM market through /create ----
   console.log("=== STEP 1: /create (market type = AMM) ===");
-  await page.goto("http://localhost:3000/create", { waitUntil: "networkidle", timeout: 45000 });
+  await page.goto("http://localhost:3000/create", { waitUntil: "domcontentloaded", timeout: 45000 });
   await page.click("text=Select Wallet", { timeout: 10000 });
   await page.waitForTimeout(400);
   await page.click("text=Phantom", { timeout: 10000 });
@@ -221,7 +221,7 @@ async function main() {
 
   // ---- STEP 2: market page → deposit through the panel ----
   console.log("\n=== STEP 2: AmmTradingPanel deposit ===");
-  await page.goto(`http://localhost:3000/market/${marketStr}`, { waitUntil: "networkidle", timeout: 45000 });
+  await page.goto(`http://localhost:3000/market/${marketStr}`, { waitUntil: "domcontentloaded", timeout: 45000 });
   // wallet-adapter may auto-reconnect from localStorage after navigation —
   // only click through the modal if the connect button is actually there.
   await page.click("text=Select Wallet", { timeout: 5000 }).catch(() => {});
@@ -256,7 +256,7 @@ async function main() {
   await page.click('[data-testid="amm-swap-btn"]');
   await page.waitForFunction(
     (prev) => {
-      const a = document.querySelector('a[href*="/tx/"]');
+      const a = [...document.querySelectorAll('a[href*="/tx/"]')].find((el) => el.textContent?.includes("last tx"));
       return a && !(a as HTMLAnchorElement).href.includes(prev);
     },
     sigBefore3 || "___",
@@ -295,7 +295,7 @@ async function main() {
   await page.click('[data-testid="amm-swap-btn"]');
   await page.waitForFunction(
     (prev) => {
-      const a = document.querySelector('a[href*="/tx/"]');
+      const a = [...document.querySelectorAll('a[href*="/tx/"]')].find((el) => el.textContent?.includes("last tx"));
       return a && !(a as HTMLAnchorElement).href.includes(prev);
     },
     sigBefore5 || "___",
@@ -312,7 +312,7 @@ async function main() {
   await settlePanel.locator('button:has-text("Settle via validate_stat")').first().click({ timeout: 30000 });
   await page.waitForSelector("text=outcome:", { timeout: 90000 });
   console.log(`settled (${Date.now() - t6}ms wall)`);
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.click("text=Select Wallet", { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(300);
   await page.click("text=Phantom", { timeout: 5000 }).catch(() => {});

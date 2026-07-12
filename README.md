@@ -472,17 +472,20 @@ iteration to get right:
   names sealed-batch markets as the MEV-proof alternative — the two market
   types are complementary trade-offs, not a claim that one is strictly
   better.
-- **New wallets get test-USDC from a devnet faucet, not organically.** A
-  fresh wallet has no ATA and no balance for the test-USDC mint, and
-  `submit_sealed_order` does a raw SPL transfer with no ATA-creation
-  fallback — so a brand new wallet's first bet would otherwise fail outright.
+- **New wallets get test-USDC from a devnet faucet or a SOL exchange, not
+  organically.** Two explicit user-triggered funding paths (surfaced in the
+  Vault / "Add funds" modal — trading flows no longer silently mint behind
+  the user's back):
   [`app/src/app/api/faucet/route.ts`](app/src/app/api/faucet/route.ts)
-  — server-only, same pattern as the house-counter route above — creates the
-  connecting wallet's ATA if missing and mints it test-USDC (via the same
-  devnet mint authority) before a bet is placed. **This only works because
-  this build controls the test-USDC mint's authority; a real deployment
-  swapping in actual USDC would have no such faucet and users would arrive
-  with their own funded ATA already, same as any other SPL token.**
+  mints free test-USDC (throttled), and
+  [`app/src/app/api/buy-usdc/route.ts`](app/src/app/api/buy-usdc/route.ts)
+  is an atomic devnet exchange — the user's SOL transfer to the treasury
+  and the treasury's test-USDC mint ride in ONE transaction the server
+  builds and partial-signs (it never co-signs client-supplied bytes), at a
+  disclosed toy rate of 1 SOL = 200 tUSDC. **Both only work because this
+  build controls the test-USDC mint's authority; a real deployment
+  swapping in actual USDC would have neither route — users would arrive
+  with their own funded ATA, same as any other SPL token.**
 - **Devnet test-USDC, not real USDC.** The escrow mint is a devnet SPL
   token created by this build (6 decimals, same interface as USDC) — real
   USDC doesn't exist to move on devnet. `open_market`/`open_market_sealed`

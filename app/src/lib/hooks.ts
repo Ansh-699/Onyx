@@ -265,7 +265,7 @@ export function useAmmPriceHistory(marketPdas: string[] | undefined) {
       const body = await res.json();
       return body.series ?? {};
     },
-    refetchInterval: 60_000,
+    refetchInterval: 12_000,
     placeholderData: keepPreviousData,
     enabled: !!marketPdas && marketPdas.length > 0,
   });

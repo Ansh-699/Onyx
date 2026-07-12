@@ -59,10 +59,14 @@ export function SettleClaimPanel({ market, isAmm = false }: { market: OnChainMar
   // oracle proof either doesn't exist or reflects a match still in play, so
   // offering the button pre-deadline guarantees a reverted transaction (seen
   // live: Phantom "reverted during simulation" on an upcoming fixture).
-  // The program itself stays permissionless; this is a UI gate only.
+  // Exception: the bundled demo fixture's match is already finished (its
+  // proof ships with the build), so pre-deadline settlement there succeeds —
+  // and the reproducible browser proof depends on it. The program itself
+  // stays permissionless; this is a UI gate only.
   const deadlinePassed = Math.floor(Date.now() / 1000) >= Number(market.deadline);
-  const canSettle = (market.status === STATUS_OPEN || market.status === STATUS_LIVE) && deadlinePassed;
-  const settleLocked = (market.status === STATUS_OPEN || market.status === STATUS_LIVE) && !deadlinePassed;
+  const settleReady = deadlinePassed || usesBundledProof;
+  const canSettle = (market.status === STATUS_OPEN || market.status === STATUS_LIVE) && settleReady;
+  const settleLocked = (market.status === STATUS_OPEN || market.status === STATUS_LIVE) && !settleReady;
   // claim is the sealed/parimutuel Position path — an AMM market has no
   // Position accounts (payouts go through redeem_amm in the trade panel),
   // so offering Claim there guarantees a failed transaction.

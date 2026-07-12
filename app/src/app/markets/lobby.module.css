@@ -152,6 +152,10 @@
 
 /* ---------- market card ---------- */
 
+/* Tried rdev/liquid-glass-react as the card container — its absolute-
+   positioned glass layers washed out the content and broke the grid on the
+   light theme, so cards keep this proven CSS liquid glass; the lib's look
+   is echoed on the Yes/No chips below (backdrop blur + inset highlight). */
 .marketCard {
   display: flex;
   flex-direction: column;
@@ -160,7 +164,6 @@
   color: var(--text);
   text-decoration: none;
   transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
-  /* liquid-glass panel — same tokens as the landing hero (.heroGlass) */
   background: var(--glass-tint);
   border-color: var(--glass-border);
   backdrop-filter: blur(18px) saturate(1.5);
@@ -276,7 +279,32 @@
   border-radius: 10px;
   font-size: 0.85rem;
   font-weight: 600;
-  transition: filter 120ms ease;
+  transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  /* real <button>s now — liquid-glass chip treatment */
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 4px 14px -8px var(--glass-shadow);
+  color: var(--text);
+}
+
+.yesBtn:hover:not(:disabled),
+.noBtn:hover:not(:disabled) {
+  transform: scale(1.03);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 8px 22px -10px var(--glass-shadow);
+}
+
+.yesBtn:active:not(:disabled),
+.noBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.yesBtn:disabled,
+.noBtn:disabled {
+  cursor: default;
+  opacity: 0.75;
 }
 
 .yesBtn {
@@ -442,4 +470,25 @@
   margin-top: 24px;
   font-size: 0.78rem;
   color: var(--text-dim);
+}
+
+/* ---------- "You hold" banner (your real on-chain position) ---------- */
+
+.myPosition {
+  margin-top: 2px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  font-weight: 600;
+  border: 1px solid var(--glass-border);
+}
+
+.myPosition[data-side="yes"] {
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+  color: var(--green);
+}
+
+.myPosition[data-side="no"] {
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  color: var(--red);
 }

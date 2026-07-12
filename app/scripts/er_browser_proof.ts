@@ -143,7 +143,7 @@ async function main() {
 
   const url = `http://localhost:3000/market/${MARKET}`;
   console.log("[proof] navigating to", url);
-  await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 
   console.log("[proof] connecting wallet...");
   await page.click("text=Select Wallet", { timeout: 10000 });
@@ -211,7 +211,7 @@ async function main() {
     await clickAndCapture("delegate_market", "Delegate market to Ephemeral Rollup");
     await page.waitForTimeout(3000); // let delegation status propagate through the router
   }
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.screenshot({ path: "/tmp/claude-1000/-home-anshtyagi-Documents-worldcup/a3bee9fc-78fa-4362-b7ff-85bf4d3f06aa/scratchpad/browser-02-delegated.png", fullPage: true });
 
   // ---- Step 2: deposit & enable ----
@@ -267,7 +267,7 @@ async function main() {
     await new Promise((r) => setTimeout(r, 3000));
   }
   console.log("[proof] commit window closed, reloading page...");
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await panel.locator('button:has-text("Reveal now")').waitFor({ state: "visible", timeout: 20000 });
   await page.screenshot({ path: "/tmp/claude-1000/-home-anshtyagi-Documents-worldcup/a3bee9fc-78fa-4362-b7ff-85bf4d3f06aa/scratchpad/browser-08-reveal-window.png", fullPage: true });
 
@@ -287,7 +287,7 @@ async function main() {
     await new Promise((r) => setTimeout(r, 3000));
   }
   console.log("[proof] reveal window closed, reloading...");
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await panel.locator('button:has-text("Run batch match now")').waitFor({ state: "visible", timeout: 20000 });
   await page.screenshot({ path: "/tmp/claude-1000/-home-anshtyagi-Documents-worldcup/a3bee9fc-78fa-4362-b7ff-85bf4d3f06aa/scratchpad/browser-10-match-ready.png", fullPage: true });
 
@@ -306,7 +306,7 @@ async function main() {
     if (m && m.owner.equals(ONYX)) break;
     await new Promise((r) => setTimeout(r, 2000));
   }
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   // SettleClaimPanel is a DIFFERENT card from the ER panel -- wait for ITS
   // button specifically, page-wide (not scoped to `panel`).
   const settlePanel = page.locator("div.card").filter({ hasText: "Settle via validate_stat" }).first();
@@ -318,7 +318,7 @@ async function main() {
   // ---- Step 10: settle (existing SettleClaimPanel, unchanged) ----
   console.log("\n[proof] === STEP 10: settle ===");
   await clickAndCapture("settle_market", "Settle via validate_stat", { timeout: 30000, root: settlePanel });
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await panel.locator('button:has-text("Withdraw")').waitFor({ state: "visible", timeout: 20000 });
   await page.screenshot({ path: "/tmp/claude-1000/-home-anshtyagi-Documents-worldcup/a3bee9fc-78fa-4362-b7ff-85bf4d3f06aa/scratchpad/browser-13-settled.png", fullPage: true });
 

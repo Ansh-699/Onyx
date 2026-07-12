@@ -107,7 +107,7 @@ async function main() {
 
   const url = `http://localhost:3000/market/${MARKET}`;
   console.log("[resume] navigating to", url);
-  await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 
   // Each chromium.launch() is a fresh, isolated browser profile -- there's
   // no persisted wallet-adapter localStorage from the earlier (separate)
@@ -163,7 +163,7 @@ async function main() {
   // ---- Step 10: settle ----
   console.log("\n[resume] === STEP 10: settle ===");
   await clickAndCapture("settle_market", "Settle via validate_stat", { timeout: 30000, root: settlePanel });
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await panel.locator('button:has-text("Withdraw")').waitFor({ state: "visible", timeout: 20000 });
   await page.screenshot({ path: "/tmp/claude-1000/-home-anshtyagi-Documents-worldcup/a3bee9fc-78fa-4362-b7ff-85bf4d3f06aa/scratchpad/resume-03-settled.png", fullPage: true });
 

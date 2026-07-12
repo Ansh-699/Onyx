@@ -12,7 +12,7 @@ import { readHistory, recordPricePoint, recordBatch } from "@/lib/priceHistory";
 import { getAmmPoolsForMarkets } from "@/lib/onchain";
 import { spotPriceScaled } from "@/lib/ammMath";
 
-const SAMPLE_MS = 60_000;
+const SAMPLE_MS = 15_000;
 // pool pda -> market pda mapping isn't invertible from the pool alone, so
 // callers pass MARKET pdas; we derive pools server-side (same as the lobby).
 export async function GET(req: NextRequest) {

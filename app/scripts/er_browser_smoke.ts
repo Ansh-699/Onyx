@@ -77,7 +77,7 @@ async function main() {
   page.on("console", (msg) => console.log(`[browser ${msg.type()}]`, msg.text()));
   page.on("pageerror", (err) => console.log("[browser pageerror]", err.message));
 
-  await page.goto(`http://localhost:3000/market/${MARKET}`, { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto(`http://localhost:3000/market/${MARKET}`, { waitUntil: "domcontentloaded", timeout: 30000 });
   console.log("[smoke] page loaded");
 
   await page.click("text=Select Wallet", { timeout: 10000 });

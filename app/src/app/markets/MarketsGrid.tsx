@@ -35,6 +35,10 @@ import type { AmmPoolSummary } from "@/lib/onchain";
 import { describeMarketPredicate, rawPredicateText } from "@/lib/statKeys";
 import { getFixtureInfo, fixtureDisplayName, getFixtureStartTimeMs, primeLiveFixtures } from "@/lib/fixtureMeta";
 import { flagFor } from "@/lib/flags";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useAmmPositionsForOwner } from "@/lib/hooks";
+import { SIDE_A, SIDE_B } from "@/lib/instructions";
+import { QuickTradeModal, type QuickTradeTarget } from "@/components/QuickTradeModal";
 import styles from "./lobby.module.css";
 
 // ---------------------------------------------------------------------------
@@ -207,12 +211,16 @@ function MarketCard({
   pool,
   series,
   traders,
+  myPosition,
+  onQuickTrade,
 }: {
   row: Row;
   now: number;
   pool: AmmPoolSummary | undefined;
   series: PoolHistorySeries | undefined;
   traders: number | undefined;
+  myPosition: { tokensA: bigint; tokensB: bigint } | undefined;
+  onQuickTrade: (t: QuickTradeTarget) => void;
 }) {
   const m = row.market;
   const isAmm = !!pool;
@@ -291,23 +299,54 @@ function MarketCard({
         </div>
       )}
 
-      {/* Polymarket-style Yes/No price buttons — real pool prices in cents. */}
+      {/* Yes/No are REAL buy buttons: click opens the quick-trade modal
+          (stopPropagation so the card link doesn't navigate). */}
       <div className={styles.yesNoRow} aria-hidden={yesCents === null}>
-        <span className={styles.yesBtn} data-empty={yesCents === null}>
+        <button
+          type="button"
+          className={styles.yesBtn}
+          data-empty={yesCents === null}
+          disabled={!pool || !row.active}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (pool) onQuickTrade({ marketPda: m.pda, title: row.title, fixtureLabel: row.fixtureLabel, side: SIDE_A, pool });
+          }}
+          data-testid={`quick-yes-${m.pda.slice(0, 6)}`}
+        >
           <span>Yes</span>
           <strong>{yesCents !== null ? `${yesCents}¢` : "—"}</strong>
-        </span>
-        <span className={styles.noBtn} data-empty={noCents === null}>
+        </button>
+        <button
+          type="button"
+          className={styles.noBtn}
+          data-empty={noCents === null}
+          disabled={!pool || !row.active}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (pool) onQuickTrade({ marketPda: m.pda, title: row.title, fixtureLabel: row.fixtureLabel, side: SIDE_B, pool });
+          }}
+        >
           <span>No</span>
           <strong>{noCents !== null ? `${noCents}¢` : "—"}</strong>
-        </span>
+        </button>
       </div>
+
+      {/* your real on-chain holdings on this market */}
+      {myPosition && (myPosition.tokensA > 0n || myPosition.tokensB > 0n) && (
+        <div className={styles.myPosition} data-side={myPosition.tokensA >= myPosition.tokensB ? "yes" : "no"}>
+          You hold{myPosition.tokensA > 0n && <> {formatVolume(Number(myPosition.tokensA) / 1e6)} YES</>}
+          {myPosition.tokensA > 0n && myPosition.tokensB > 0n && " ·"}
+          {myPosition.tokensB > 0n && <> {formatVolume(Number(myPosition.tokensB) / 1e6)} NO</>}
+        </div>
+      )}
 
       <div className={styles.cardBottom}>
         <div className={styles.cardBottomLeft}>
           {isAmm && !showOutcome && (
-            <span className={styles.probLabel} title="AMM market: continuous trading against a seeded pool — buy AND sell anytime before kickoff. Instant, gas-free on the Ephemeral Rollup with a trading session.">
-              {pool?.delegated ? "⚡ ER · " : ""}trade anytime
+            <span className={styles.probLabel} title="Buy and sell anytime against a real seeded pool. Flash trades run on MagicBlock's Ephemeral Rollup — ~1s, no gas, no popups with 1-click trading on.">
+              {pool?.delegated ? "⚡ Flash trade" : "trade anytime"}
             </span>
           )}
           {showOutcome && (
@@ -414,6 +453,15 @@ export function MarketsGrid() {
   );
   const { data: history } = useAmmPriceHistory(pooledPdas.length > 0 ? pooledPdas : undefined);
   const { data: traderCounts } = useAmmTraderCounts(pooledPdas.length > 0 ? pooledPdas : undefined);
+  // Your holdings per market ("You hold 2.99 YES" banners) + quick-trade modal.
+  const { publicKey } = useWallet();
+  const { data: myPositions } = useAmmPositionsForOwner(publicKey);
+  const myPositionByMarket = useMemo(() => {
+    const map = new Map<string, { tokensA: bigint; tokensB: bigint }>();
+    for (const p of myPositions ?? []) map.set(p.market, { tokensA: p.tokensA, tokensB: p.tokensB });
+    return map;
+  }, [myPositions]);
+  const [quickTarget, setQuickTarget] = useState<QuickTradeTarget | null>(null);
 
   const { rows, hiddenCount, collapsedCount } = useMemo(() => {
     const all = data ?? [];
@@ -571,6 +619,8 @@ export function MarketsGrid() {
             pool={ammPools?.get(row.market.pda)}
             series={history?.[row.market.pda]}
             traders={traderCounts?.perMarket.get(row.market.pda)}
+            myPosition={myPositionByMarket.get(row.market.pda)}
+            onQuickTrade={setQuickTarget}
           />
         ))}
       </div>
@@ -623,6 +673,8 @@ export function MarketsGrid() {
       </p>
 
       {body}
+
+      <QuickTradeModal target={quickTarget} onClose={() => setQuickTarget(null)} />
 
       {(hiddenCount > 0 || collapsedCount > 0) && (
         <p className={styles.disclosure}>

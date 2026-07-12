@@ -1,0 +1,78 @@
+.balances {
+  display: flex;
+  gap: 28px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-tint);
+}
+
+.balances > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.balValue {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.balLabel {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.action {
+  margin-bottom: 14px;
+}
+
+.buyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.buyRow input {
+  width: 90px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.buyEq {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.hint {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.note {
+  margin: 8px 0;
+  font-size: 0.85rem;
+  color: var(--green);
+}
+
+.error {
+  margin: 8px 0;
+  font-size: 0.85rem;
+  color: var(--red);
+}
+
+.explainer {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}

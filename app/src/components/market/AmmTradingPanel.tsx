@@ -44,22 +44,11 @@ import {
 } from "@/lib/onchain";
 import { invalidateDelegationStatus } from "@/lib/erRouting";
 import { useAmmPosition } from "@/lib/hooks";
-import {
-  type TradingSession,
-  loadSession,
-  createSessionKeypair,
-  saveSession,
-  clearSession,
-  sessionTokenPda,
-  buildCreateSessionIx,
-  buildRevokeSessionIx,
-} from "@/lib/session";
+import { type TradingSession, loadSession, clearSession, buildRevokeSessionIx } from "@/lib/session";
 import { friendlyError, classifyWrongLedger } from "@/lib/errors";
 import { sendViaWallet, sendViaKeypair } from "@/lib/tx";
+import { startSessionAndDeposit, depositOnly, executeSwap, walletUsdcBalance, CLUSTER } from "@/lib/ammActions";
 import {
-  buildOpenAmmPositionIx,
-  buildDepositAmmIx,
-  buildSwapAmmIx,
   buildRedeemAmmIx,
   buildWithdrawLpAmmIx,
   buildDelegateMarketIx,
@@ -73,6 +62,7 @@ import {
   SWAP_BUY,
   SWAP_SELL,
 } from "@/lib/instructions";
+import { FundingModal } from "@/components/FundingModal";
 import { quoteBuy, quoteSell, spotPriceScaled, minOutForTolerance, buyImpactBps } from "@/lib/ammMath";
 import { WalletButton } from "@/components/WalletButton";
 import { LiquidButton } from "@/components/ui/liquid-glass-button";
@@ -96,7 +86,6 @@ function tolToBps(input: string): number | null {
 const pct = (scaled: bigint) => `${(Number(scaled) / 10_000).toFixed(1)}%`;
 /** Pool price (1e6-scaled) as Polymarket-style cents: 0.62 → "62¢". */
 const cents = (scaled: bigint) => `${Math.round(Number(scaled) / 10_000)}¢`;
-const CLUSTER = "devnet";
 
 export function AmmTradingPanel({
   market,
@@ -133,6 +122,11 @@ export function AmmTradingPanel({
   useEffect(() => {
     setSession(publicKey ? loadSession(CLUSTER, publicKey) : null);
   }, [publicKey]);
+  // Funding is decoupled from trading: when the wallet can't cover the
+  // entered amount, we point at the funding modal instead of silently
+  // minting behind the user's back (the old auto-faucet).
+  const [fundingOpen, setFundingOpen] = useState(false);
+  const [needsFunds, setNeedsFunds] = useState(false);
 
   const settled = market.status === STATUS_SETTLED || market.status === STATUS_CLAIMED;
   const deadlinePassed = Math.floor(Date.now() / 1000) >= Number(market.deadline);
@@ -191,10 +185,15 @@ export function AmmTradingPanel({
   // zero SOL; on base a fee payer must burn real lamports).
   const sendViaSession = (conn: Connection, tx: Transaction, s: TradingSession) => sendViaKeypair(conn, tx, s.keypair);
 
-  async function refreshAll() {
+  function refreshAll() {
     invalidateDelegationStatus(ammPoolPda(marketPk));
     invalidateDelegationStatus(marketPk);
-    await queryClient.invalidateQueries();
+    // Fire-and-forget: invalidateQueries' promise resolves only after EVERY
+    // active query has refetched — awaiting it kept the busy spinner up for
+    // 30s+ on a throttled RPC after a ~1s swap (looked like a hung buy;
+    // caught live by the browser proof's disabled-button timeout). The
+    // button re-enables immediately; data refreshes in the background.
+    void queryClient.invalidateQueries();
   }
 
   async function withGuard(label: string, fn: () => Promise<void>) {
@@ -202,89 +201,62 @@ export function AmmTradingPanel({
     setBusy(label);
     try {
       await fn();
-      await refreshAll();
+      refreshAll();
     } catch (err) {
       const ledgerHint = classifyWrongLedger(err);
       setError(ledgerHint ?? friendlyError(err));
-      if (ledgerHint) await refreshAll();
+      if (ledgerHint) refreshAll();
     } finally {
       setBusy(null);
     }
   }
 
+  /** Wallet must hold the amount BEFORE we ask for a signature — if not, point at funding. */
+  async function guardFunds(amount: bigint): Promise<boolean> {
+    const bal = await walletUsdcBalance(publicKey!);
+    if (bal >= amount) {
+      setNeedsFunds(false);
+      return true;
+    }
+    setNeedsFunds(true);
+    return false;
+  }
+
   async function onDeposit() {
     const amount = toBase(depositUsdc);
-    if (!amount || !publicKey) return;
-    await withGuard("Getting devnet test-USDC…", async () => {
-      const usdcMint = await getConfigUsdcMint();
-      if (!usdcMint) throw new Error("config not initialized on devnet yet");
-      const faucetRes = await fetch("/api/faucet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: publicKey.toBase58() }),
-      });
-      const faucetBody = await faucetRes.json();
-      if (!faucetRes.ok || !faucetBody.ok) throw new Error(`devnet faucet failed: ${faucetBody.error ?? faucetRes.status}`);
-
-      setBusy("Deposit (one signature)…");
-      const ixs = [];
-      if (!position) ixs.push(buildOpenAmmPositionIx({ owner: publicKey, market: marketPk }).ix);
-      ixs.push(buildDepositAmmIx({ owner: publicKey, market: marketPk, amount, usdcMint }));
-      const tx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 300_000 }), ...ixs);
-      await timed(position ? "deposit_amm" : "open_amm_position + deposit_amm", () => sendVia(getConnection(), tx));
+    if (!amount || !publicKey || !signTransaction) return;
+    await withGuard("Checking your balance…", async () => {
+      if (!(await guardFunds(amount))) return;
+      setBusy("Adding funds (one approval)…");
+      await timed(`added ${fmtUsdc(amount)} tUSDC to this market`, () =>
+        depositOnly({ owner: publicKey, market: marketPk, amount, hasPosition: !!position, signTransaction }),
+      );
     });
   }
 
-  // "Start trading session" — ONE wallet popup for everything: faucet
-  // top-up, then a single tx that mints the MagicBlock SessionToken, opens
-  // + funds the position, and delegates it (plus market+pool if this market
-  // isn't on the ER yet). After this, every swap is popup-free.
+  // "Enable 1-click trading" — ONE wallet signature: scoped session key +
+  // open + deposit + delegate (see lib/ammActions.ts, shared with the lobby
+  // quick-trade modal). After this, every trade is popup-free.
   async function onStartSession() {
     const amount = toBase(depositUsdc);
     if (!amount || !publicKey || !signTransaction) return;
-    await withGuard("Topping up devnet test-USDC…", async () => {
-      // Faucet + config fetch run concurrently — the faucet mint is the slow
-      // leg (~2-4s) and used to run serially before anything else.
-      const [usdcMint, faucetRes] = await Promise.all([
-        getConfigUsdcMint(),
-        fetch("/api/faucet", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user: publicKey.toBase58() }),
-        }),
-      ]);
-      if (!usdcMint) throw new Error("config not initialized on devnet yet");
-      const faucetBody = await faucetRes.json();
-      if (!faucetRes.ok || !faucetBody.ok) throw new Error(`devnet faucet failed: ${faucetBody.error ?? faucetRes.status}`);
-
-      setBusy("Waiting for your wallet (1 signature)…");
-      const fresh = createSessionKeypair();
-      const ixs = [
-        buildCreateSessionIx({ authority: publicKey, sessionSigner: fresh.keypair.publicKey, validUntil: fresh.expiry }),
-      ];
-      if (!position) ixs.push(buildOpenAmmPositionIx({ owner: publicKey, market: marketPk }).ix);
-      ixs.push(buildDepositAmmIx({ owner: publicKey, market: marketPk, amount, usdcMint }));
-      if (!isDelegated) {
-        ixs.push(buildDelegateMarketIx({ payer: publicKey, market: marketPk }));
-        ixs.push(buildDelegateAmmPoolIx({ payer: publicKey, market: marketPk }));
-      }
-      ixs.push(buildDelegateAmmPositionIx({ payer: publicKey, market: marketPk, owner: publicKey }));
-      const tx = new Transaction().add(ComputeBudgetProgram.setComputeUnitLimit({ units: 800_000 }), ...ixs);
-      // Two signers: the wallet (fee payer + session authority) and the
-      // ephemeral key (gpl_session requires the session_signer to co-sign) —
-      // sendViaWallet partial-signs it before the popup. Confirmation runs
-      // the shared WS+poll race with expiry detection and a hard cap, so
-      // this can no longer spin forever.
+    await withGuard("Checking your balance…", async () => {
+      if (!(await guardFunds(amount))) return;
+      setBusy("Waiting for your wallet (1 approval)…");
       const signAndMarkConfirming: typeof signTransaction = async (t) => {
         const signed = await signTransaction(t);
         setBusy("Confirming on devnet…");
         return signed;
       };
-      await timed("start session (create+deposit+delegate)", () =>
-        sendViaWallet(getConnection(), tx, publicKey, signAndMarkConfirming, [fresh.keypair]),
-      );
-      // Persist only after confirmation — an unconfirmed key is garbage.
-      saveSession(CLUSTER, publicKey, fresh);
+      const { session: fresh, sig } = await startSessionAndDeposit({
+        owner: publicKey,
+        market: marketPk,
+        amount,
+        hasPosition: !!position,
+        isDelegated,
+        signTransaction: signAndMarkConfirming,
+      });
+      setLog((prev) => [{ label: "1-click trading enabled", sig, ms: 0 }, ...prev].slice(0, 8));
       setSession(fresh);
     });
   }
@@ -307,42 +279,34 @@ export function AmmTradingPanel({
     const useSession = isDelegated && session !== null && session.expiry * 1000 > Date.now();
     const dirWord = direction === SWAP_BUY ? "Buying" : "Selling";
     await withGuard(
-      `${dirWord} on ${isDelegated ? "the Ephemeral Rollup" : "base devnet"}${useSession ? " (session-signed, no popup)" : ""}…`,
+      `${dirWord}${useSession ? " — instant, no approval needed" : " — approve in your wallet"}…`,
       async () => {
-        const ix = buildSwapAmmIx({
-          owner: publicKey,
-          market: marketPk,
-          side,
-          direction,
-          amountIn,
-          minOut: quote.minOut, // the quote's min-received — enforced on-chain (6026 if beaten)
-          ...(useSession
-            ? {
-                sessionSigner: session.keypair.publicKey,
-                sessionToken: sessionTokenPda(session.keypair.publicKey, publicKey),
-              }
-            : {}),
-        });
         // human-readable receipt line: what you got, not just the ix name
         const label =
           direction === SWAP_BUY
             ? `bought ≈${fmtUsdc(quote.out)} ${side === SIDE_A ? "YES" : "NO"} for ${fmtUsdc(amountIn)} tUSDC`
             : `sold ${fmtUsdc(amountIn)} ${side === SIDE_A ? "YES" : "NO"} for ≈${fmtUsdc(quote.out)} tUSDC`;
-        const sig = await timed(
+        await timed(
           label,
-          () =>
-            useSession
-              ? sendViaSession(connection, new Transaction().add(ix), session)
-              : sendVia(connection, new Transaction().add(ix)),
+          async () => {
+            const { sig } = await executeSwap({
+              owner: publicKey,
+              market: marketPk,
+              connection,
+              isDelegated,
+              side,
+              direction,
+              amountIn,
+              minOut: quote.minOut, // enforced on-chain (6026 if beaten)
+              session,
+              signTransaction: signTransaction!,
+            });
+            return sig;
+          },
           isDelegated ? connection.rpcEndpoint : undefined,
         );
-        // Record the swap so it appears in the Recent-trades feed immediately
-        // (real sig, server samples the real pool price). Fire-and-forget.
-        void fetch("/api/history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ market: market.pda, side, dir: direction, amountIn: amountIn.toString(), sig }),
-        }).catch(() => {});
+        // executeSwap already awaited the /api/history record — the global
+        // invalidate in withGuard now picks up the fresh trades feed.
       },
     );
   }
@@ -413,8 +377,8 @@ export function AmmTradingPanel({
         <span className={styles.title}>
           <span className={styles.bolt}>⇄</span> Trade anytime (AMM)
         </span>
-        <span className="pill" data-tone={isDelegated ? "green" : "accent"}>
-          {isDelegated ? "live on ER" : "base"}
+        <span className="pill" data-tone={isDelegated ? "green" : "accent"} title="Flash trades run on MagicBlock's Ephemeral Rollup — a speed layer over devnet. ~1s confirmation, no gas for you.">
+          {isDelegated ? "⚡ Flash trades on" : "standard speed"}
         </span>
       </div>
       <p className={styles.blurb}>
@@ -424,7 +388,7 @@ export function AmmTradingPanel({
       </p>
       <div className={styles.ledgerRow}>
         <span className={styles.ledgerDot} data-live={isDelegated} aria-hidden />
-        {isDelegated ? "swaps confirm on the Ephemeral Rollup (~1s)" : "swaps confirm on base devnet (~1-2s)"}
+        {isDelegated ? "trades confirm in ~1s" : "trades confirm in ~1-2s"}
       </div>
 
       {/* live prices straight from reserves */}
@@ -467,16 +431,16 @@ export function AmmTradingPanel({
       {connected && tradingOpen && (!position || position.usdcAvailable === 0n) && (position?.tokensA ?? 0n) === 0n && (position?.tokensB ?? 0n) === 0n && (
         <div className={styles.step}>
           <div className={styles.stepHead}>
-            <span className={styles.stepNum}>1</span> Start a trading session
+            <span className={styles.stepNum}>1</span> Add funds to trade
           </div>
           <p className={styles.blurb}>
-            One signature: funds your position AND mints a scoped MagicBlock session key — every trade after this
-            is instant, popup-free, and gas-free on the Ephemeral Rollup. The session key can only swap; it can
-            never withdraw your funds. Expires in 4h or when you end it.
+            One approval moves your USDC into this market and turns on 1-click trading — every buy and sell
+            after that is instant, with no wallet popups and no gas. The trading key in your browser can{" "}
+            <strong>only trade</strong>; withdrawing always needs your wallet. Expires in 4h or when you end it.
           </p>
           <div className={styles.fields}>
             <label className={styles.field}>
-              <span className={styles.fieldLabel}>Deposit (test-USDC)</span>
+              <span className={styles.fieldLabel}>Amount to add (devnet USDC)</span>
               <input value={depositUsdc} onChange={(e) => setDepositUsdc(e.target.value)} inputMode="decimal" placeholder="2" data-testid="amm-deposit-input" />
             </label>
           </div>
@@ -484,17 +448,40 @@ export function AmmTradingPanel({
             <LiquidButton size="lg" type="button" onClick={onStartSession} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-session-btn">
               {busy ? (
                 <>
-                  <span className={styles.spinner} aria-hidden /> Starting…
+                  <span className={styles.spinner} aria-hidden /> Working…
                 </>
               ) : (
-                "Start session (1 signature)"
+                "Enable 1-click trading"
               )}
             </LiquidButton>
-            <button className="button" data-variant="ghost" type="button" onClick={onDeposit} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-deposit-btn">
-              Deposit only (sign each trade)
+            <button className="button" data-variant="ghost" type="button" onClick={onDeposit} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-deposit-btn" style={{ fontSize: "0.8rem" }}>
+              or add funds &amp; approve each trade
             </button>
           </div>
           {busy && <p className={`muted ${styles.blurb}`}>{busy}</p>}
+          <details className={styles.blurb} style={{ marginTop: 8 }}>
+            <summary style={{ cursor: "pointer" }} className="muted">What happens under the hood?</summary>
+            <p style={{ marginTop: 6 }}>
+              &ldquo;Enable 1-click trading&rdquo; sends one transaction that: mints a scoped MagicBlock session
+              key (it can ONLY call swap — the program rejects it on every funds-moving instruction), opens your
+              position account, escrows your deposit in the market&apos;s program-owned vault, and delegates the
+              accounts to the Ephemeral Rollup where trades confirm in ~1s with validator-sponsored fees. Buy/Sell
+              then sends <code>swap_amm</code> signed by that key. Withdrawals (<code>redeem_amm</code>) always
+              require your wallet&apos;s signature.
+            </p>
+          </details>
+        </div>
+      )}
+
+      {needsFunds && (
+        <div className={styles.step} data-testid="amm-needs-funds">
+          <p className={styles.blurb} style={{ margin: 0 }}>
+            <strong>Not enough devnet USDC in your wallet</strong> for that amount — grab some first (free), then
+            come back.
+          </p>
+          <button className="button" type="button" onClick={() => setFundingOpen(true)} style={{ marginTop: 8 }}>
+            Get devnet USDC
+          </button>
         </div>
       )}
 
@@ -503,11 +490,11 @@ export function AmmTradingPanel({
         <div className={styles.availRow} data-testid="amm-session-chip">
           <span>
             <span aria-hidden style={{ background: "var(--green)", display: "inline-block", width: 7, height: 7, borderRadius: "50%", marginRight: 6 }} />
-            Session active · expires {new Date(session.expiry * 1000).toLocaleTimeString()} · trades are popup-free
-            {isDelegated ? "" : " once this market is on the ER"}
+            1-click trading on · until {new Date(session.expiry * 1000).toLocaleTimeString()} · no approvals needed
+            {isDelegated ? "" : " once this market is flash-enabled"}
           </span>
           <button type="button" className="button" data-variant="ghost" style={{ padding: "2px 10px", fontSize: "0.75rem" }} onClick={onEndSession} disabled={!!busy}>
-            End session
+            Turn off
           </button>
         </div>
       )}
@@ -530,7 +517,7 @@ export function AmmTradingPanel({
               onClick={onDeposit}
               disabled={!!busy}
             >
-              + deposit more
+              + add funds
             </button>
           </div>
 
@@ -591,8 +578,11 @@ export function AmmTradingPanel({
           {!busy && insufficient && (
             <p className={`muted ${styles.blurb}`}>
               {direction === SWAP_BUY
-                ? "You've spent your full deposit — press “+ deposit more” above to top up (one signature)."
-                : "You don't hold that many tokens — check “You hold” above."}
+                ? "You've spent everything you added to this market — press “+ add funds” above (one approval)."
+                : "You don't hold that many tokens — check “You hold” above."}{" "}
+              <button type="button" className="button" data-variant="ghost" style={{ padding: "1px 8px", fontSize: "0.72rem" }} onClick={() => setFundingOpen(true)}>
+                need more USDC?
+              </button>
             </p>
           )}
         </form>
@@ -714,6 +704,7 @@ export function AmmTradingPanel({
         (the swap reverts rather than fill worse than your min), but it is not MEV-proofing. For MEV-proof
         execution, use a <strong>sealed-batch market</strong> — uniform clearing price, no ordering advantage.
       </p>
+      <FundingModal open={fundingOpen} onClose={() => setFundingOpen(false)} />
     </div>
   );
 }

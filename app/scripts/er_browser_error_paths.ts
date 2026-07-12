@@ -91,7 +91,7 @@ async function main() {
 
   const url = `http://localhost:3000/market/${MARKET}`;
   console.log("[test] navigating to", url);
-  await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
   console.log("[test] connecting wallet...");
   await page.click("text=Select Wallet", { timeout: 10000 });
   await page.waitForTimeout(400);
@@ -108,7 +108,7 @@ async function main() {
   console.log("\n[test] === SETUP: delegate market ===");
   await click("Delegate market to Ephemeral Rollup", 20000);
   await page.waitForTimeout(3000);
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   console.log("[test] === SETUP: deposit & enable ===");
   await panel.locator('input[placeholder="5"]').first().fill("5");
@@ -148,7 +148,7 @@ async function main() {
   while (Math.floor(Date.now() / 1000) < commitEndTs + 3) {
     await new Promise((r) => setTimeout(r, 3000));
   }
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await panel.locator('button:has-text("Reveal now")').waitFor({ state: "visible", timeout: 20000 });
   await page.screenshot({ path: `${SCRATCH}/errpath-01-reveal-window-corrupted.png`, fullPage: true });
 

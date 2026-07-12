@@ -1509,3 +1509,34 @@ Per the line-by-line review's phase order; **108 → 111 tests**, all green:
   vault → 0); sealed `verify-flow.ts` PASS (market `6h2ej3YQ…`, batch
   match + real validate_stat + claim); delegated-market position open
   live PASS. Nothing skipped.
+
+## 2026-07-12 (evening) — funding split, buy-with-SOL, Vault, lobby quick-buy
+
+- **Funding decoupled from trading**: the auto-faucet inside deposit/session
+  flows is gone. Trading pre-checks the wallet's tUSDC balance and points
+  at the funding modal when short. New `/api/buy-usdc`: atomic devnet
+  exchange (user's SOL transfer + treasury's tUSDC mint in ONE server-built
+  partial-signed tx; 1 SOL = 200 tUSDC toy rate, disclosed). Live-proven:
+  0.1 SOL → exactly 20 tUSDC, sig `5sK1RNwB…`.
+- **Vault (non-custodial)**: nav button → panel showing wallet balance,
+  "working in markets" (deposits + tokens at live pool prices), 1-click
+  trading status, funding actions, portfolio link. Explicit custody note:
+  program-owned escrow, browser key can only trade, withdrawals need the
+  wallet. Custodial variant considered and rejected with the user.
+- **Lobby quick-buy**: Yes/No chips are real buttons → compact modal (quote
+  via the shared CPMM math, min_out enforced on-chain at 2% for quote
+  staleness headroom). First buy runs the full enable-bundle in one
+  approval; subsequent buys are instant. Shared logic extracted to
+  `lib/ammActions.ts` — panel and modal call the same functions.
+- **"You hold" banners** on lobby cards from the dual-scan positions hook.
+- **De-jargoned**: "Enable 1-click trading" / "Add funds to trade" /
+  "⚡ Flash trade" (ER named only in tooltips + an under-the-hood
+  disclosure listing the exact instruction bundle).
+- **liquid-glass-react evaluated and rejected**: its absolute-positioned
+  glass layers washed out card content and broke the grid on the light
+  theme — cards keep the proven CSS liquid glass; Yes/No chips got the
+  glass-chip treatment (backdrop blur + inset highlight). Dependency
+  removed after the trial; decision noted in lobby.module.css.
+- **Trades feed freshness**: server live-sample threshold 60s → 15s, client
+  poll 60s → 12s, own swaps recorded awaited-then-invalidated (feed shows
+  your trade immediately).
