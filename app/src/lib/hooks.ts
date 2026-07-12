@@ -4,9 +4,9 @@
 // through the existing read functions in onchain.ts — no mocks — and uses
 // keepPreviousData so a poll tick can never blank or flash the UI.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { PublicKey } from "@solana/web3.js";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData, type QueryClient } from "@tanstack/react-query";
 import {
   listMarkets,
   getMarket,
@@ -334,12 +334,78 @@ export function fixtureIndex(fixtures: LiveFixture[] | undefined): Map<number, L
   return new Map((fixtures ?? []).map((f) => [f.fixtureId, f]));
 }
 
+// ---- live score push (SSE) ------------------------------------------------
+// One shared EventSource to /api/scores/stream for the whole tab (refcounted
+// — cards mount one useScore each). Every event names the fixtures it
+// touches; we invalidate exactly those queries, whose refetch hits our API
+// with a just-invalidated server cache → fresh TxLINE data within ~1s of
+// TxLINE publishing, instead of on the next 20s poll tick. The poll below
+// stays as the fallback for stream outages.
+let scoreEs: EventSource | null = null;
+let scoreEsRefs = 0;
+let scoreStreamLive = false;
+const scoreStreamListeners = new Set<() => void>();
+const notifyStreamState = () => {
+  for (const l of scoreStreamListeners) l();
+};
+
+function acquireScoreStream(queryClient: QueryClient): () => void {
+  scoreEsRefs++;
+  if (!scoreEs && typeof window !== "undefined") {
+    scoreEs = new EventSource("/api/scores/stream");
+    scoreEs.onopen = () => {
+      scoreStreamLive = true;
+      notifyStreamState();
+    };
+    scoreEs.onerror = () => {
+      scoreStreamLive = false;
+      notifyStreamState();
+    };
+    scoreEs.onmessage = (ev) => {
+      const ids = [...String(ev.data).matchAll(/"fixtureId"\s*:\s*(\d+)/g)].map((m) => Number(m[1]));
+      if (ids.length > 0) {
+        for (const id of ids) void queryClient.invalidateQueries({ queryKey: ["score", id] });
+      } else {
+        void queryClient.invalidateQueries({ queryKey: ["score"] });
+      }
+    };
+  }
+  return () => {
+    scoreEsRefs--;
+    if (scoreEsRefs <= 0 && scoreEs) {
+      scoreEs.close();
+      scoreEs = null;
+      scoreStreamLive = false;
+      notifyStreamState();
+    }
+  };
+}
+
+/** Whether the live TxLINE push stream is currently connected (for honest UI labels). */
+export function useScoreStreamLive(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      scoreStreamListeners.add(cb);
+      return () => scoreStreamListeners.delete(cb);
+    },
+    () => scoreStreamLive,
+    () => false,
+  );
+}
+
 /**
- * Live TxLINE score via our server-side proxy (/api/scores/[fixtureId] —
- * credentials never reach the browser). TxLINE free tier updates on a ~60s
- * SL1 cadence; poll at 20s so the UI reflects new data within a cadence tick.
+ * Live TxLINE score: SSE push (updates land the moment TxLINE publishes —
+ * their SL1 tier emits roughly every 60s during live play) + a 20s poll as
+ * fallback. Served via server-side proxies; credentials never reach the
+ * browser.
  */
 export function useScore(fixtureId: number | null | undefined) {
+  const queryClient = useQueryClient();
+  const enabled = fixtureId !== null && fixtureId !== undefined;
+  useEffect(() => {
+    if (!enabled) return;
+    return acquireScoreStream(queryClient);
+  }, [enabled, queryClient]);
   return useQuery<FixtureScore>({
     queryKey: ["score", fixtureId],
     queryFn: async () => {
@@ -349,7 +415,7 @@ export function useScore(fixtureId: number | null | undefined) {
     },
     refetchInterval: 20_000,
     placeholderData: keepPreviousData,
-    enabled: fixtureId !== null && fixtureId !== undefined,
+    enabled,
   });
 }
 

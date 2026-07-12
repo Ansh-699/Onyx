@@ -75,6 +75,13 @@ async function findMaxSeq(fixtureId: number): Promise<number> {
 
 const cache = new Map<number, FixtureScore>();
 
+/** Drop a fixture's cached score — called by the live stream bridge the
+ * moment TxLINE pushes an event for it, so the next snapshot fetch returns
+ * genuinely fresh data instead of waiting out the poll TTL. */
+export function invalidateScoreCache(fixtureId: number): void {
+  cache.delete(fixtureId);
+}
+
 /** Current score for a fixture, straight from TxLINE (not on-chain, not our proof capture). */
 export async function getFixtureScore(fixtureId: number): Promise<FixtureScore> {
   const cached = cache.get(fixtureId);

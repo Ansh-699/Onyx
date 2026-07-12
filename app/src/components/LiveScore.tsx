@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useReferenceOdds } from "@/lib/hooks";
+import { useReferenceOdds, useScore, useScoreStreamLive } from "@/lib/hooks";
 import styles from "./LiveScore.module.css";
 
-import type { FixtureScore } from "@/lib/hooks";
-
-// Real data only: polls our server-side proxy (app/src/app/api/scores/
-// [fixtureId]/route.ts), which calls TxLINE's stat-validation endpoint with
-// credentials that never reach the browser. TxLINE's free-tier (SL1) data
-// only refreshes on the order of ~60s, so this is NOT a live/real-time feed
-// -- it's disclosed as such in the UI rather than implying otherwise.
-const POLL_MS = 20_000;
+// Real data only, delivered two ways: a server-side SSE bridge to TxLINE's
+// /scores/stream pushes updates the moment TxLINE publishes them (useScore
+// invalidates on every event), with a 20s poll as fallback. Credentials
+// never reach the browser. The remaining latency floor is TxLINE's own SL1
+// publish cadence (~60s during live play) — disclosed in the caption
+// rather than implying tick-by-tick data we don't have.
 
 function formatKickoff(startTimeMs: number): string {
   const diffMs = startTimeMs - Date.now();
@@ -34,34 +31,14 @@ export function LiveScore({
   awayLabel: string;
   startTimeMs?: number | null;
 }) {
-  const [score, setScore] = useState<FixtureScore | null>(null);
-  const [error, setError] = useState(false);
+  // SSE-pushed + poll-fallback score (see lib/hooks.ts useScore).
+  const scoreQuery = useScore(fixtureId);
+  const score = scoreQuery.data ?? null;
+  const error = scoreQuery.isError;
+  const streamLive = useScoreStreamLive();
   // Bookmaker 1X2 reference (TxLINE /odds/snapshot) — external context only,
   // never our market's price and never settlement; hidden when unpublished.
   const odds = useReferenceOdds(fixtureId);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function poll() {
-      try {
-        const res = await fetch(`/api/scores/${fixtureId}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as FixtureScore;
-        if (!cancelled) {
-          setScore(data);
-          setError(false);
-        }
-      } catch {
-        if (!cancelled) setError(true);
-      }
-    }
-    poll();
-    const id = setInterval(poll, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [fixtureId]);
 
   const upcoming = typeof startTimeMs === "number" && startTimeMs > Date.now();
   const hasStarted = score !== null && score.seq > 1;
@@ -109,8 +86,8 @@ export function LiveScore({
               : "Live from TxLINE"}
         </span>
         <span className="muted mono" style={{ fontSize: "0.72rem" }}>
-          {score ? `fetched ${new Date(score.fetchedAt).toLocaleTimeString()} · ` : ""}
-          TxLINE SL1 cadence (~60s) — not real-time
+          {score ? `updated ${new Date(score.fetchedAt).toLocaleTimeString()} · ` : ""}
+          {streamLive ? "⚡ live push (SSE)" : "20s poll"} · TxLINE publishes ~60s (SL1 tier)
         </span>
       </div>
     </div>
