@@ -5,7 +5,7 @@
 // a stable placeholder renders until the client has mounted so the server and
 // first client paint always agree (no hydration mismatch, no flash).
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction } from "@solana/web3.js";
@@ -36,10 +36,11 @@ import {
   listTradingAccountsByOwner,
 } from "@/lib/positions";
 import { buildClaimIx } from "@/lib/instructions";
+import { spotPriceScaled } from "@/lib/ammMath";
 import { friendlyError } from "@/lib/errors";
 import { describeMarketPredicate } from "@/lib/statKeys";
 import { getFixtureInfo, fixtureDisplayName, primeLiveFixtures } from "@/lib/fixtureMeta";
-import { useLiveFixtures } from "@/lib/hooks";
+import { useLiveFixtures, useAmmPoolMarkets } from "@/lib/hooks";
 import { WalletButton } from "@/components/WalletButton";
 import styles from "./portfolio.module.css";
 
@@ -185,6 +186,53 @@ export default function PortfolioPage() {
     enabled: ready,
   });
 
+  // Live pool prices for the positions' markets — token holdings get valued
+  // at the price they could actually be sold at right now.
+  const ammMarketPdas = useMemo(
+    () => [...new Set((ammPositionsQuery.data ?? []).map((r) => r.position.market))],
+    [ammPositionsQuery.data],
+  );
+  const ammPools = useAmmPoolMarkets(ammMarketPdas.length > 0 ? ammMarketPdas : undefined);
+
+  /** Value a position at the pool's live price (usdc + tokens marked to market). */
+  const positionValue = (p: OnChainAmmPosition): bigint => {
+    const pool = ammPools.data?.get(p.market);
+    let v = p.usdcAvailable;
+    if (pool && pool.reserveA + pool.reserveB > 0n) {
+      const priceA = spotPriceScaled(pool.reserveA, pool.reserveB);
+      v += (p.tokensA * priceA + p.tokensB * (1_000_000n - priceA)) / 1_000_000n;
+    }
+    return v;
+  };
+
+  // AMM summary strip: totals across every position (real on-chain figures;
+  // token values are marked at live pool prices, labeled as such).
+  const ammSummary = useMemo(() => {
+    const rows = ammPositionsQuery.data ?? [];
+    const now = Math.floor(Date.now() / 1000);
+    let atWork = 0n;
+    let withdrawable = 0n;
+    let withdrawn = 0n;
+    let open = 0;
+    for (const { position: p, market: m } of rows) {
+      withdrawn += p.withdrawn;
+      const isSettled = !!m && (m.status === STATUS_SETTLED || m.status === STATUS_CLAIMED);
+      const isExpired = !!m && !isSettled && now > Number(m.deadline) + SETTLE_GRACE_SEC;
+      if (isSettled || isExpired) {
+        if (!p.redeemed) {
+          const winning = isSettled ? (m!.outcome === OUTCOME_SIDE_A ? p.tokensA : p.tokensB) : 0n;
+          const setTokens = p.tokensA < p.tokensB ? p.tokensA : p.tokensB;
+          withdrawable += p.usdcAvailable + (isSettled ? winning : setTokens);
+        }
+      } else {
+        atWork += positionValue(p);
+        open++;
+      }
+    }
+    return { atWork, withdrawable, withdrawn, open };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ammPositionsQuery.data, ammPools.data]);
+
   // ---- claim flow ----
   const [claiming, setClaiming] = useState<string | null>(null); // position pda in flight
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -310,6 +358,31 @@ export default function PortfolioPage() {
       {/* ---- Your positions (AMM, the flagship flow) — always first ---- */}
       <section className={styles.section}>
         <h2>Your positions · trade-anytime markets</h2>
+
+        {/* summary strip: real on-chain totals; token values marked at live pool prices */}
+        {ammPositionsQuery.data && ammPositionsQuery.data.length > 0 && (
+          <div className={`card ${styles.summary}`}>
+            <div className={styles.summaryStat}>
+              <span className={styles.summaryValue}>{fmtUsdc(ammSummary.atWork)}</span>
+              <span className={styles.summaryLabel}>In open markets (tUSDC, at pool price)</span>
+            </div>
+            <div className={styles.summaryStat}>
+              <span className={styles.summaryValue} data-tone={ammSummary.withdrawable > 0n ? "green" : undefined}>
+                {fmtUsdc(ammSummary.withdrawable)}
+              </span>
+              <span className={styles.summaryLabel}>Ready to withdraw</span>
+            </div>
+            <div className={styles.summaryStat}>
+              <span className={styles.summaryValue}>{fmtUsdc(ammSummary.withdrawn)}</span>
+              <span className={styles.summaryLabel}>Withdrawn to date</span>
+            </div>
+            <div className={styles.summaryStat}>
+              <span className={styles.summaryValue}>{ammSummary.open}</span>
+              <span className={styles.summaryLabel}>Open positions</span>
+            </div>
+          </div>
+        )}
+
         {ammPositionsQuery.isPending ? (
           <div className={styles.rows} aria-hidden>
             <div className={`skeleton ${styles.skelRow}`} />
@@ -323,13 +396,27 @@ export default function PortfolioPage() {
         ) : (
           <div className={styles.rows}>
             {ammPositionsQuery.data.map(({ position: p, market: m }) => {
+              const nowSec = Math.floor(Date.now() / 1000);
               const settled = !!m && (m.status === STATUS_SETTLED || m.status === STATUS_CLAIMED);
               // Program-mirrored expiry gate: never-settled market past deadline + grace
               // refunds deposits + min(both token sides); directional residual is lost.
-              const expired = !!m && !settled && Math.floor(Date.now() / 1000) > Number(m.deadline) + SETTLE_GRACE_SEC;
+              const expired = !!m && !settled && nowSec > Number(m.deadline) + SETTLE_GRACE_SEC;
               const winning = settled ? (m!.outcome === OUTCOME_SIDE_A ? p.tokensA : p.tokensB) : 0n;
               const setTokens = p.tokensA < p.tokensB ? p.tokensA : p.tokensB;
               const redeemable = p.usdcAvailable + (p.redeemed ? 0n : settled ? winning : expired ? setTokens : 0n);
+              const pool = ammPools.data?.get(p.market);
+              const priceA = pool && pool.reserveA + pool.reserveB > 0n ? spotPriceScaled(pool.reserveA, pool.reserveB) : null;
+              const yesCents = priceA !== null ? Math.round(Number(priceA) / 10_000) : null;
+              const value = positionValue(p);
+              const closesIn = m && !settled && Number(m.deadline) > nowSec ? Number(m.deadline) - nowSec : null;
+              const closesLabel =
+                closesIn !== null
+                  ? closesIn > 86_400
+                    ? `closes in ${Math.floor(closesIn / 86_400)}d ${Math.floor((closesIn % 86_400) / 3_600)}h`
+                    : closesIn > 3_600
+                      ? `closes in ${Math.floor(closesIn / 3_600)}h ${Math.floor((closesIn % 3_600) / 60)}m`
+                      : `closes in ${Math.max(1, Math.floor(closesIn / 60))}m`
+                  : null;
               return (
                 <div key={p.pda} className={`card ${styles.row}`}>
                   <div className={styles.rowMain}>
@@ -339,16 +426,46 @@ export default function PortfolioPage() {
                       </Link>
                     </div>
                     <div className={styles.sub}>
-                      {p.usdcAvailable > 0n && <span className={styles.amount}>{fmtUsdc(p.usdcAvailable)} tUSDC deposited</span>}
-                      {p.tokensA > 0n && <span>{fmtUsdc(p.tokensA)} Side-A tokens</span>}
-                      {p.tokensB > 0n && <span>{fmtUsdc(p.tokensB)} Side-B tokens</span>}
+                      {p.tokensA > 0n && (
+                        <span className={styles.holdYes}>
+                          {fmtUsdc(p.tokensA)} YES{yesCents !== null && ` @ ${yesCents}¢`}
+                        </span>
+                      )}
+                      {p.tokensB > 0n && (
+                        <span className={styles.holdNo}>
+                          {fmtUsdc(p.tokensB)} NO{yesCents !== null && ` @ ${100 - yesCents}¢`}
+                        </span>
+                      )}
+                      {p.usdcAvailable > 0n && <span>{fmtUsdc(p.usdcAvailable)} tUSDC to spend</span>}
                       {p.withdrawn > 0n && <span>withdrawn {fmtUsdc(p.withdrawn)}</span>}
+                    </div>
+                    <div className={styles.sub}>
+                      {!settled && !expired && value > 0n && (
+                        <span className={styles.amount} title="Deposits plus tokens valued at the pool's live price — what selling everything right now would return before fees/slippage.">
+                          worth ≈{fmtUsdc(value)} tUSDC at pool price
+                        </span>
+                      )}
+                      {closesLabel && <span>{closesLabel}</span>}
+                      <a
+                        className="mono"
+                        href={`https://explorer.solana.com/address/${p.pda}?cluster=devnet`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Your position account on-chain"
+                      >
+                        {shortPda(p.pda)} ↗
+                      </a>
                     </div>
                   </div>
                   <div className={styles.rowMeta}>
                     <span className="pill" data-tone={settled ? "green" : expired ? "amber" : "accent"}>
                       {p.redeemed ? "Redeemed" : settled ? "Redeemable" : expired ? "Refundable (expired)" : m ? (STATUS_NAMES[m.status] ?? "Open") : "Open"}
                     </span>
+                    {settled && !p.redeemed && (
+                      <span className="pill" data-tone={winning > 0n ? "green" : "red"}>
+                        {winning > 0n ? `won · ${fmtUsdc(winning)} redeems 1:1` : "side lost"}
+                      </span>
+                    )}
                     {!p.redeemed && redeemable > 0n && (
                       <Link href={`/market/${p.market}`} className="button" data-variant="ghost">
                         Withdraw →
@@ -360,6 +477,10 @@ export default function PortfolioPage() {
             })}
           </div>
         )}
+        <p className={styles.txNote} style={{ marginTop: 8 }}>
+          Token values are marked at each pool&apos;s live price — actual sale proceeds shift with slippage and
+          the 1% pool fee. Every figure above is a live on-chain read.
+        </p>
       </section>
 
       {/* ---- Sealed fast-trade accounts (advanced; ER is a speed layer, not

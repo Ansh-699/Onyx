@@ -213,3 +213,18 @@
     padding-top: 12px;
   }
 }
+
+/* YES/NO holdings chips in position rows */
+.holdYes,
+.holdNo {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.holdYes {
+  color: var(--green);
+}
+
+.holdNo {
+  color: var(--red);
+}

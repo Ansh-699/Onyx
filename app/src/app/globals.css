@@ -19,18 +19,18 @@
    ============================================================ */
 
 :root {
-  /* surfaces */
-  --bg: #0a0c11;
-  --surface: #111420;
-  --surface-2: #161a28;
-  --surface-3: #1c2133;
-  --border: #232941;
-  --border-strong: #313a5c;
+  /* surfaces — neutral near-black, deliberately no blue cast */
+  --bg: #09090b;
+  --surface: #101012;
+  --surface-2: #17171a;
+  --surface-3: #1e1e22;
+  --border: #232327;
+  --border-strong: #38383f;
 
-  /* text */
-  --text: #eef1f9;
-  --text-dim: #98a1ba;
-  --text-faint: #626c88;
+  /* text — neutral grays */
+  --text: #f0f0f2;
+  --text-dim: #9b9ba6;
+  --text-faint: #65656f;
 
   /* accent + semantic */
   --accent: #6ee7ff;
@@ -65,9 +65,10 @@
   /* ambient body-wash strength (body background gradients) — light mode
      needs much stronger washes: its deep accent at low alpha vanishes on
      white, while dark mode's bright accent reads at ~12%. */
-  --wash-1: 12%;
-  --wash-2: 9%;
-  --wash-3: 7%;
+  /* dark mode: washes near-zero — a black app, not a blue-green glow */
+  --wash-1: 3%;
+  --wash-2: 2%;
+  --wash-3: 2%;
 }
 
 /* Light mode — re-tuned, not inverted: accent goes deeper/more saturated for

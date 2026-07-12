@@ -14,7 +14,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import logoGem from "@/assets/onyx-gem-light.png";
+import logoGemDark from "@/assets/onyx-gem.png";
+import logoGemLight from "@/assets/onyx-gem-light.png";
 import solanaLogo from "@/assets/Solana-Round-Logo-PNG.png";
 import magicblockLogo from "@/assets/magicblock.jpg";
 import { TradeScreen, type DemoData } from "./TradeDemo";
@@ -220,7 +221,7 @@ export function LandingHero({
       <section className={styles.hero}>
         <div className={`${styles.heroItem} ${styles.d0}`}>
           <span className={styles.wordmark}>
-            <Image src={logoGem} alt="" width={30} height={30} className={styles.logoImg} priority />
+            <Image src={logoGemDark} alt="" width={30} height={30} className={styles.logoImg} priority />
             ONYX
           </span>
         </div>
@@ -299,7 +300,7 @@ export function LandingHero({
         >
           <div className={demoStyles.appBar}>
             <span className={demoStyles.appLogo}>
-              <Image src={logoGem} alt="" width={18} height={18} className={styles.logoImg} />
+              <Image src={logoGemLight} alt="" width={18} height={18} className={styles.logoImg} />
               ONYX
             </span>
             <span className={demoStyles.appNav}>
