@@ -310,3 +310,15 @@ refuses to ship).
 Explicitly out of v1 (roadmap): real SPL outcome tokens, LP shares /
 add-remove liquidity, LMSR, multi-outcome markets, order book, rolling
 re-opening markets.
+
+## Operator kill-switch (audit Phase 2 decision)
+
+`Config.paused` gates **base-layer entry only** (market/pool creation,
+positions, deposits). `swap_amm` deliberately never loads Config — pulling a
+base-owned account into the delegated ER execution path is the exact bug
+class the ER integration fought (accounts touched without being delegated /
+fee-payer mutations). The kill-switch for a live ER market is
+**undelegate → settle**: undelegation removes the ER copy, settlement flips
+status to SETTLED, and `swap_amm` re-checks status on every swap on either
+ledger (existing swap-after-settle tests pin this). Paused still stops new
+money entering on base while that sequence runs.

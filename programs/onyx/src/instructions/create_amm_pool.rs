@@ -50,8 +50,18 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> Pr
     if seed_amount == 0 {
         return Err(OnyxError::InsufficientStake.into());
     }
-    if fee_bps as u64 > BPS_DENOM {
+    // Sane fee ceiling (audit Phase 1): 10% max, not "anything below 100%".
+    if fee_bps as u64 > MAX_AMM_FEE_BPS {
         return Err(OnyxError::BadParams.into());
+    }
+
+    // Defense-in-depth (audit Phase 3): the market must be a real ONYX
+    // account. Pool creation always happens BEFORE ER delegation (the
+    // seeder and /create both do open_market + create_pool in one tx), so
+    // strict ONYX ownership is correct here — unlike open_amm_position,
+    // which must also accept a delegated market.
+    if !market_ai.is_owned_by(program_id) {
+        return Err(OnyxError::InvalidOwner.into());
     }
 
     let market_key = *market_ai.key();

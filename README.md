@@ -437,12 +437,20 @@ iteration to get right:
   Archive tab that still shows everything. Residual balances belonging to
   discarded demo wallets are their money — not ours to move — and are
   reported as such by the script.
-- **Lobby prices for ER-delegated pools are the base-layer snapshot.** The
-  market page streams live reserves from the ER; the lobby's ¢ chips read
-  each pool's base account (frozen at delegation time) — right after
-  seeding they're identical (50¢/50¢), during heavy ER trading the lobby
-  lags until the next commit. Disclosed here rather than pretending the
-  lobby is a live feed.
+- **Lobby prices for ER-delegated pools are re-read live from the ER.**
+  (An earlier build served the base-layer snapshot frozen at delegation
+  time — that's fixed: `getAmmPoolsForMarkets` does a second batched read
+  against the ER for delegated pools, so the lobby's ¢ chips track real ER
+  trading. If the ER endpoint is unreachable the lobby falls back to the
+  base snapshot — stale but real, never fabricated.)
+- **Classic sealed reveal fails while a market is ER-delegated (working
+  fallback).** Confirmed live: the first reveal after commit-close advances
+  the market's phase, which base rejects while the account is owned by the
+  Delegation Program. The UI warns before classic orders are placed on a
+  delegated market and routes to the working recovery: `refund_unrevealed`
+  ("Reclaim") returns the locked collateral once the reveal window closes.
+  Known limitation, documented in OPEN_QUESTIONS.md — not an undiscovered
+  bug, and no funds are stranded.
 - **The AMM expiry-refund path is mollusk-proven, not live-proven.** If an
   AMM market never settles (fixture never gets oracle data), `redeem_amm` /
   `withdraw_lp_amm` open a refund path after `deadline + 2h grace`:
@@ -561,7 +569,7 @@ To rebuild and redeploy the on-chain program yourself:
 ```bash
 cd programs/onyx
 cargo build-sbf
-cargo test                                      # 108 host tests, incl. real
+cargo test                                      # 111 host tests, incl. real
                                                  # mollusk-svm SBF execution
                                                  # (loads the actual compiled
                                                  # onyx.so): the fund-custody-

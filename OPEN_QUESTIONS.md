@@ -122,3 +122,15 @@ callback would surface as a loud `InvalidInstructionData` or PDA-mismatch
 error (checked before any state mutation) — not a silent corruption — but
 would still break the demo undelegate flow, so re-check that section against
 the pinned versions before relying on it after any MagicBlock upgrade.
+
+## Known limitation: classic sealed reveal on a delegated market (working fallback)
+
+`reveal_order` on a market currently delegated to the ER fails on base (the
+first reveal after commit-close advances the market's phase, which base
+rejects while the account is owned by the Delegation Program — confirmed
+live). This stays open by design: no program changes to the sealed flow
+before the deadline. **The fallback works end to end and the UI routes
+users to it**: locked collateral is recoverable via `refund_unrevealed`
+("Reclaim") once the reveal window closes, and the market page shows a
+warning before anyone places a classic order on a delegated market. A judge
+hitting this is seeing a documented limitation, not an undiscovered bug.

@@ -169,6 +169,9 @@ pub const ODDS_SCALE: u64 = 1_000_000;
 pub const SETTLE_GRACE: i64 = 2 * 60 * 60; // 2h
 /// Basis-points denominator for fee math.
 pub const BPS_DENOM: u64 = 10_000;
+/// Sane ceiling for an AMM pool's LP fee (10%). A fee anywhere near
+/// BPS_DENOM would make every swap a near-total loss — reject at creation.
+pub const MAX_AMM_FEE_BPS: u64 = 1_000;
 
 /// TxLINE timestamps are milliseconds; epoch day = floor(ts_ms / 86_400_000).
 pub const MS_PER_DAY: i64 = 86_400_000;

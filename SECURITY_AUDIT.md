@@ -171,3 +171,45 @@ these don't move tokens directly (ER pure-data-mutation only) and any
 forged `TradingAccount` fed into them is caught downstream at
 `withdraw_trading.rs`'s `is_owned_by` check, so they're lower priority but
 not yet read line-by-line.
+
+---
+
+## 2026-07-12 audit-response addendum (independent review follow-up)
+
+**Fixed this pass (deployed to devnet):**
+- **Fee ceiling** — `create_amm_pool` now rejects `fee_bps > 1_000` (10%,
+  `MAX_AMM_FEE_BPS`), not merely `> BPS_DENOM` (100%). Boundary test-pinned
+  (1000 passes, 1001 → BadParams 6002). Fee *computation* untouched.
+- **Market-ownership checks on AMM entry** — `create_amm_pool` requires the
+  market account to be ONYX-owned (pool creation always precedes ER
+  delegation). `open_amm_position` requires ONYX **or Delegation Program**
+  ownership — the delegated case is the production norm (the seeder
+  delegates market+pool before any wallet opens a position), so an
+  ONYX-only check would have bricked one-signature onboarding; both
+  directions are test-pinned (foreign owner → InvalidOwner 7001).
+
+**Decisions / known-open, by design:**
+- **Kill-switch for a live ER market (Phase 2 → option A).** `Config.paused`
+  (6001) gates base-layer entry only; `swap_amm` deliberately does NOT load
+  Config — adding a Config dependency into the delegated ER execution path
+  reintroduces the "account touched without being delegated" bug class we
+  already fought and won. The operator kill-switch for a live ER market is
+  **undelegate → settle**: undelegation removes the ER copy (ER swaps stop
+  routing), and settlement flips status to SETTLED, which `swap_amm`'s
+  status gate (OPEN/LIVE only, checked every swap) rejects on any ledger —
+  covered by the existing swap-after-settle tests. Pause remains the gate
+  for new money entering on base.
+- **Expiry-refund directional dust** — a never-settled market past
+  deadline+grace refunds deposits + the paired (min-side) token value; the
+  directional residual stays in the vault. Over-collateralized by
+  construction: funds can be stranded, never created or lost. Acknowledged;
+  no code change.
+- **`skipPreflight: true` on all client sends is intentional** — preflight
+  simulates against possibly-stale state (worst on the ER/base boundary)
+  and produces misleading failures; real errors surface through the
+  confirm/poll path (`JSON.stringify`ed on-chain error → `friendlyError`
+  mapping, e.g. the in-panel SlippageExceeded message, verified live in the
+  browser proof).
+- **`tx.ts` explorer-URL "double braces"** — reviewed: the source is a
+  normal template literal (`${sig}`); the doubled braces were a transcript
+  rendering artifact. Links verified working.

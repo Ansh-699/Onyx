@@ -1476,3 +1476,36 @@ Screenshots amm-01 … amm-12 in the session scratchpad.
    demo wallet; re-run creates fresh ones if those aged out).
 4. Demo wallet import secret prints at the end of seed_activity —
    terminal only, never committed.
+
+## 2026-07-12 (later) — independent-audit response (deployed 5mDR9TfA…)
+
+Per the line-by-line review's phase order; **108 → 111 tests**, all green:
+- **Phase 1 (fee cap)**: `create_amm_pool` rejects `fee_bps > MAX_AMM_FEE_BPS`
+  (1000 = 10%); boundary test-pinned (1000 ok / 1001 BadParams). Fee math
+  untouched.
+- **Phase 2 (kill-switch) → option A, documented not wired**: Config stays
+  out of `swap_amm` (ER bug-class risk). Operator halt for a live ER market
+  = undelegate → settle; swap's per-swap status gate rejects SETTLED on any
+  ledger (mollusk-pinned). Written into SECURITY_AUDIT.md +
+  AMM_TRADING_DESIGN.md.
+- **Phase 3 (ownership)**: `create_amm_pool` requires ONYX-owned market;
+  `open_amm_position` requires ONYX **or Delegation-Program** owner (the
+  seeded-market norm — ONYX-only would brick one-signature onboarding).
+  Negative + both-positive cases test-pinned; the delegated case ALSO
+  live-verified post-upgrade on market `5u4M3jk1…` (sig `2jJFyFCM…`).
+- **Phase 4**: tx.ts explorer URL is a normal template literal (transcript
+  artifact, links verified); `skipPreflight: true` intentional and
+  documented (stale-simulation false failures; real errors surface via the
+  confirm path + friendlyError, proven by the in-panel 6026 message).
+- **Phase 5**: sealed reveal-on-delegated limitation + working Reclaim
+  fallback documented in OPEN_QUESTIONS.md and the README no-bluff list
+  (UI warning + reclaim path confirmed wired in SealedOrderPanel);
+  expiry-dust over-collateralization acknowledged in SECURITY_AUDIT.md.
+  Also corrected the stale no-bluff entry: lobby prices for delegated
+  pools are now live ER re-reads, not the frozen base snapshot.
+- **Phase 6 (regression, upgraded binary live on devnet)**:
+  `cargo test --release` 111/111; `bun run demo:amm` PASS (market
+  `4SfVjDAc…`, slippage revert + live settle + lamport-exact solvency,
+  vault → 0); sealed `verify-flow.ts` PASS (market `6h2ej3YQ…`, batch
+  match + real validate_stat + claim); delegated-market position open
+  live PASS. Nothing skipped.

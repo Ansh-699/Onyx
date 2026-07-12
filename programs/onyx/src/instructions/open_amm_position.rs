@@ -1,10 +1,12 @@
 //! open_amm_position (disc 30): create a user's AmmPosition for a market.
-//! Base-layer, no token movement. Mirrors open_trading_account.rs exactly,
-//! including its lesson: deliberately does NOT check market_ai's ownership
-//! or status, since a wallet must be able to open a position after the
-//! market's pool has been delegated (pool delegation is independent of
-//! market delegation for AMM markets — a plain market with an AMM pool is
-//! never itself delegated at all; only the pool and positions are).
+//! Base-layer, no token movement. Mirrors open_trading_account.rs.
+//!
+//! Market-ownership check (audit Phase 3): the market must be owned by
+//! ONYX **or the Delegation Program** — never ONYX-only. In the production
+//! session flow the v2 seeder delegates market + pool to the ER up front,
+//! so by the time a wallet opens its position on base, the market's base
+//! copy is owned by DELeGG…; an ONYX-only check would brick one-signature
+//! onboarding on every seeded market. Both directions are test-pinned.
 //!
 //! Accounts: [0] owner (S,W) · [1] market (read, PDA seeding only)
 //!           · [2] position PDA (W, ["ammpos", market, owner])
@@ -31,6 +33,13 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _args: &[u8]) -> P
 
     if !owner.is_signer() {
         return Err(OnyxError::MissingSignature.into());
+    }
+
+    // See header: ONYX-owned (pre-delegation) OR Delegation-Program-owned
+    // (post-delegation, the normal seeded-market case). Anything else —
+    // e.g. a fabricated market account owned by a random program — is out.
+    if !market_ai.is_owned_by(program_id) && !market_ai.is_owned_by(&DELEGATION_PROGRAM_ID) {
+        return Err(OnyxError::InvalidOwner.into());
     }
 
     let (position_pda, bump) = find_program_address(

@@ -507,3 +507,84 @@ fn full_lifecycle_expiry_unwind_pays_complete_sets_and_leaves_exact_residual() {
         &[Check::err(SvmProgramError::Custom(OnyxError::AlreadyRedeemed as u32))],
     );
 }
+
+// ---- audit Phase 1 + 3: creation-time guards (fee ceiling, market ownership) ----
+
+/// fee_bps ceiling is exactly MAX_AMM_FEE_BPS (10%): 1000 passes, 1001 is BadParams.
+#[test]
+fn create_pool_fee_cap_boundary() {
+    for (fee, ok) in [(1000u16, true), (1001u16, false)] {
+        let mut world = setup_world();
+        let market = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let (pool, _) = Pubkey::find_program_address(&[SEED_AMM_POOL, market.as_ref()], &PROGRAM_ID);
+        let (vault, vault_bump) = Pubkey::find_program_address(&[SEED_VAULT, market.as_ref()], &PROGRAM_ID);
+        let creator = Pubkey::new_unique();
+        let creator_ata = Pubkey::new_unique();
+        let rent = Rent::default();
+        world.set(market, Account { lamports: rent.minimum_balance(MARKET_LEN), data: market_bytes(STATUS_OPEN, OUTCOME_UNKNOWN, DEADLINE, vault_bump), owner: PROGRAM_ID, executable: false, rent_epoch: 0 });
+        world.set(pool, system_placeholder());
+        world.set(vault, token_account(mint, vault, 0));
+        world.set(creator, Account::new(10_000_000_000, 0, &solana_system_interface::program::ID));
+        world.set(creator_ata, token_account(mint, creator, 1_000_000));
+        let checks = if ok {
+            vec![Check::success()]
+        } else {
+            vec![Check::err(SvmProgramError::Custom(OnyxError::BadParams as u32))]
+        };
+        world.call(&ix_create_amm_pool(&creator, &market, &pool, &vault, &creator_ata, 1_000_000, fee), &checks);
+    }
+}
+
+/// A "market" account owned by a foreign program can't get a pool: InvalidOwner (7001).
+#[test]
+fn create_pool_rejects_foreign_owned_market() {
+    let mut world = setup_world();
+    let market = Pubkey::new_unique();
+    let mint = Pubkey::new_unique();
+    let (pool, _) = Pubkey::find_program_address(&[SEED_AMM_POOL, market.as_ref()], &PROGRAM_ID);
+    let (vault, vault_bump) = Pubkey::find_program_address(&[SEED_VAULT, market.as_ref()], &PROGRAM_ID);
+    let creator = Pubkey::new_unique();
+    let creator_ata = Pubkey::new_unique();
+    let rent = Rent::default();
+    // valid market BYTES, wrong OWNER — only the ownership check can catch this
+    world.set(market, Account { lamports: rent.minimum_balance(MARKET_LEN), data: market_bytes(STATUS_OPEN, OUTCOME_UNKNOWN, DEADLINE, vault_bump), owner: Pubkey::new_unique(), executable: false, rent_epoch: 0 });
+    world.set(pool, system_placeholder());
+    world.set(vault, token_account(mint, vault, 0));
+    world.set(creator, Account::new(10_000_000_000, 0, &solana_system_interface::program::ID));
+    world.set(creator_ata, token_account(mint, creator, 1_000_000));
+    world.call(
+        &ix_create_amm_pool(&creator, &market, &pool, &vault, &creator_ata, 1_000_000, 100),
+        &[Check::err(SvmProgramError::Custom(OnyxError::InvalidOwner as u32))],
+    );
+}
+
+/// Foreign-owned market can't take positions either — but a market owned by
+/// the DELEGATION PROGRAM must keep working: that's the production session
+/// flow (seeder delegates market+pool first, wallets open positions after).
+/// An ONYX-only ownership check here would brick one-signature onboarding.
+#[test]
+fn open_position_market_ownership_gate() {
+    let rent = Rent::default();
+    let delegation_program = Pubkey::new_from_array(DELEGATION_PROGRAM_ID);
+    for (market_owner, expect_ok) in [
+        (PROGRAM_ID, true),            // pre-delegation
+        (delegation_program, true),    // post-delegation (seeded-market norm)
+        (Pubkey::new_unique(), false), // fabricated foreign account
+    ] {
+        let mut world = setup_world();
+        let market = Pubkey::new_unique();
+        let (_, vault_bump) = Pubkey::find_program_address(&[SEED_VAULT, market.as_ref()], &PROGRAM_ID);
+        let owner = Pubkey::new_unique();
+        let (position, _) = Pubkey::find_program_address(&[SEED_AMM_POSITION, market.as_ref(), owner.as_ref()], &PROGRAM_ID);
+        world.set(market, Account { lamports: rent.minimum_balance(MARKET_LEN), data: market_bytes(STATUS_OPEN, OUTCOME_UNKNOWN, DEADLINE, vault_bump), owner: market_owner, executable: false, rent_epoch: 0 });
+        world.set(owner, Account::new(10_000_000_000, 0, &solana_system_interface::program::ID));
+        world.set(position, system_placeholder());
+        let checks = if expect_ok {
+            vec![Check::success()]
+        } else {
+            vec![Check::err(SvmProgramError::Custom(OnyxError::InvalidOwner as u32))]
+        };
+        world.call(&ix_open_amm_position(&owner, &market, &position), &checks);
+    }
+}
