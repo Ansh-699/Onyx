@@ -276,6 +276,16 @@ export async function findSettleTx(pda: string): Promise<{
 export function explorerTxUrl(signature: string): string {
   return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
 }
+/**
+ * ER-aware explorer link: a transaction executed on the Ephemeral Rollup
+ * lives on the ER's ledger, NOT base devnet — a ?cluster=devnet link shows
+ * "Not Found" (observed live). Solana Explorer supports custom RPC URLs, so
+ * ER txs link with the ER endpoint plugged in.
+ */
+export function explorerTxUrlFor(signature: string, rpcEndpoint: string | null): string {
+  if (!rpcEndpoint || rpcEndpoint.includes("devnet.solana.com")) return explorerTxUrl(signature);
+  return `https://explorer.solana.com/tx/${signature}?cluster=custom&customUrl=${encodeURIComponent(rpcEndpoint)}`;
+}
 export function explorerAddressUrl(address: string): string {
   return `https://explorer.solana.com/address/${address}?cluster=devnet`;
 }

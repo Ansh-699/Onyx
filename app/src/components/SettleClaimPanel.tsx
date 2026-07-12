@@ -55,7 +55,14 @@ export function SettleClaimPanel({ market, isAmm = false }: { market: OnChainMar
     market.statAKey === PROVABLE_STAT_KEY;
 
   const settled = market.status === STATUS_SETTLED || market.status === STATUS_CLAIMED;
-  const canSettle = market.status === STATUS_OPEN || market.status === STATUS_LIVE;
+  // Settlement needs FINAL match stats — before the deadline (kickoff) the
+  // oracle proof either doesn't exist or reflects a match still in play, so
+  // offering the button pre-deadline guarantees a reverted transaction (seen
+  // live: Phantom "reverted during simulation" on an upcoming fixture).
+  // The program itself stays permissionless; this is a UI gate only.
+  const deadlinePassed = Math.floor(Date.now() / 1000) >= Number(market.deadline);
+  const canSettle = (market.status === STATUS_OPEN || market.status === STATUS_LIVE) && deadlinePassed;
+  const settleLocked = (market.status === STATUS_OPEN || market.status === STATUS_LIVE) && !deadlinePassed;
   // claim is the sealed/parimutuel Position path — an AMM market has no
   // Position accounts (payouts go through redeem_amm in the trade panel),
   // so offering Claim there guarantees a failed transaction.
@@ -151,6 +158,12 @@ export function SettleClaimPanel({ market, isAmm = false }: { market: OnChainMar
           : "Fetches a live proof from TxLINE's /scores/stat-validation for this exact market's fixture and stat at settlement time."}
       </p>
       {!connected && <WalletButton />}
+      {settleLocked && (
+        <p className={styles.blurb}>
+          Settlement opens after the deadline ({new Date(Number(market.deadline) * 1000).toLocaleString()}),
+          once TxLINE has the final match stats. Anyone can trigger it then — it&apos;s permissionless.
+        </p>
+      )}
       {connected && (canSettle || canClaim) && (
         <div style={{ display: "flex", gap: "0.75rem" }}>
           {canSettle && (

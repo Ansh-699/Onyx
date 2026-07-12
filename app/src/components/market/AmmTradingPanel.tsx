@@ -40,7 +40,7 @@ import {
   SETTLE_GRACE_SEC,
   getConfigUsdcMint,
   getConnection,
-  explorerTxUrl,
+  explorerTxUrlFor,
 } from "@/lib/onchain";
 import { invalidateDelegationStatus } from "@/lib/erRouting";
 import { useAmmPosition } from "@/lib/hooks";
@@ -117,7 +117,9 @@ export function AmmTradingPanel({
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [log, setLog] = useState<{ label: string; sig: string; ms: number }[]>([]);
+  // rpc: which ledger the tx landed on — ER txs need the custom-cluster
+  // explorer link (a plain ?cluster=devnet link 404s for them).
+  const [log, setLog] = useState<{ label: string; sig: string; ms: number; rpc?: string }[]>([]);
 
   const [depositUsdc, setDepositUsdc] = useState("2");
   const [side, setSide] = useState<number>(SIDE_A);
@@ -169,11 +171,11 @@ export function AmmTradingPanel({
   const held = direction === SWAP_SELL ? (side === SIDE_A ? (position?.tokensA ?? 0n) : (position?.tokensB ?? 0n)) : (position?.usdcAvailable ?? 0n);
   const insufficient = amountIn !== null && amountIn > held;
 
-  async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  async function timed<T>(label: string, fn: () => Promise<T>, rpc?: string): Promise<T> {
     const t0 = performance.now();
     const result = await fn();
     const ms = Math.round(performance.now() - t0);
-    if (typeof result === "string") setLog((prev) => [{ label, sig: result, ms }, ...prev].slice(0, 8));
+    if (typeof result === "string") setLog((prev) => [{ label, sig: result, ms, rpc }, ...prev].slice(0, 8));
     return result;
   }
 
@@ -321,11 +323,26 @@ export function AmmTradingPanel({
               }
             : {}),
         });
-        await timed(`swap_amm (${direction === SWAP_BUY ? "buy" : "sell"} ${side === SIDE_A ? "A" : "B"})`, () =>
-          useSession
-            ? sendViaSession(connection, new Transaction().add(ix), session)
-            : sendVia(connection, new Transaction().add(ix)),
+        // human-readable receipt line: what you got, not just the ix name
+        const label =
+          direction === SWAP_BUY
+            ? `bought ≈${fmtUsdc(quote.out)} ${side === SIDE_A ? "YES" : "NO"} for ${fmtUsdc(amountIn)} tUSDC`
+            : `sold ${fmtUsdc(amountIn)} ${side === SIDE_A ? "YES" : "NO"} for ≈${fmtUsdc(quote.out)} tUSDC`;
+        const sig = await timed(
+          label,
+          () =>
+            useSession
+              ? sendViaSession(connection, new Transaction().add(ix), session)
+              : sendVia(connection, new Transaction().add(ix)),
+          isDelegated ? connection.rpcEndpoint : undefined,
         );
+        // Record the swap so it appears in the Recent-trades feed immediately
+        // (real sig, server samples the real pool price). Fire-and-forget.
+        void fetch("/api/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ market: market.pda, side, dir: direction, amountIn: amountIn.toString(), sig }),
+        }).catch(() => {});
       },
     );
   }
@@ -467,7 +484,7 @@ export function AmmTradingPanel({
             <LiquidButton size="lg" type="button" onClick={onStartSession} disabled={!!busy || !toBase(depositUsdc)} data-testid="amm-session-btn">
               {busy ? (
                 <>
-                  <span className={styles.spinner} aria-hidden /> {busy}
+                  <span className={styles.spinner} aria-hidden /> Starting…
                 </>
               ) : (
                 "Start session (1 signature)"
@@ -477,6 +494,7 @@ export function AmmTradingPanel({
               Deposit only (sign each trade)
             </button>
           </div>
+          {busy && <p className={`muted ${styles.blurb}`}>{busy}</p>}
         </div>
       )}
 
@@ -496,9 +514,13 @@ export function AmmTradingPanel({
 
       {connected && position && tradingOpen && (
         <form onSubmit={onSwap} className={styles.form}>
-          <div className={styles.availRow}>
+          <div className={styles.availRow} data-testid="amm-holdings">
             <span>
-              Available: {fmtUsdc(position.usdcAvailable)} tUSDC · {fmtUsdc(position.tokensA)} A · {fmtUsdc(position.tokensB)} B
+              You hold: <strong>{fmtUsdc(position.tokensA)} YES</strong> · <strong>{fmtUsdc(position.tokensB)} NO</strong>
+              {position.tokensA + position.tokensB > 0n && (
+                <> (≈{fmtUsdc((position.tokensA * priceA + position.tokensB * priceB) / 1_000_000n)} tUSDC at pool price)</>
+              )}{" "}
+              · {fmtUsdc(position.usdcAvailable)} tUSDC to spend
             </span>
             <button
               type="button"
@@ -557,14 +579,22 @@ export function AmmTradingPanel({
           <LiquidButton size="lg" type="submit" disabled={!!busy || !quote || insufficient} data-testid="amm-swap-btn">
             {busy ? (
               <>
-                <span className={styles.spinner} aria-hidden /> {busy}
+                <span className={styles.spinner} aria-hidden /> {direction === SWAP_BUY ? "Buying…" : "Selling…"}
               </>
             ) : insufficient ? (
-              direction === SWAP_BUY ? "Not enough deposited tUSDC" : "Not enough tokens"
+              "Insufficient balance"
             ) : (
-              `${direction === SWAP_BUY ? "Buy" : "Sell"} ${side === SIDE_A ? "Yes (A)" : "No (B)"} ${isDelegated ? "· instant on ER" : ""}`
+              `${direction === SWAP_BUY ? "Buy" : "Sell"} ${side === SIDE_A ? "Yes" : "No"}${isDelegated ? " · instant" : ""}`
             )}
           </LiquidButton>
+          {busy && <p className={`muted ${styles.blurb}`}>{busy}</p>}
+          {!busy && insufficient && (
+            <p className={`muted ${styles.blurb}`}>
+              {direction === SWAP_BUY
+                ? "You've spent your full deposit — press “+ deposit more” above to top up (one signature)."
+                : "You don't hold that many tokens — check “You hold” above."}
+            </p>
+          )}
         </form>
       )}
 
@@ -667,8 +697,13 @@ export function AmmTradingPanel({
       {error && <p className={styles.error} data-testid="amm-error">{error}</p>}
       {log[0] && (
         <p className={`muted ${styles.txRow}`}>
-          <a href={explorerTxUrl(log[0].sig)} target="_blank" rel="noreferrer">
-            last tx ({log[0].label}) ↗
+          <a
+            href={explorerTxUrlFor(log[0].sig, log[0].rpc ?? null)}
+            target="_blank"
+            rel="noreferrer"
+            title={log[0].rpc ? "Executed on the Ephemeral Rollup — explorer opens pointed at the ER's RPC" : "Executed on base devnet"}
+          >
+            last tx ({log[0].label}) {log[0].rpc ? "· ER " : ""}↗
           </a>
         </p>
       )}

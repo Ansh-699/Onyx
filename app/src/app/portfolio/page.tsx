@@ -307,56 +307,9 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* ---- Fast trading (Ephemeral Rollup) — shown first: this is the
-          default trading flow everywhere else in the app. ---- */}
+      {/* ---- Your positions (AMM, the flagship flow) — always first ---- */}
       <section className={styles.section}>
-        <h2>Fast trading (Ephemeral Rollup)</h2>
-        {tradingAccountsQuery.isPending ? (
-          <div className={styles.rows} aria-hidden>
-            <div className={`skeleton ${styles.skelRow}`} />
-          </div>
-        ) : tradingAccountsQuery.isError ? (
-          <p className={styles.error}>{friendlyError(tradingAccountsQuery.error)}</p>
-        ) : !tas || tas.length === 0 ? (
-          <div className={styles.empty}>
-            No fast-trade accounts yet — <Link href="/markets">browse markets →</Link>
-          </div>
-        ) : (
-          <div className={styles.rows}>
-            {tas.map((t) => (
-              <div key={t.pda} className={`card ${styles.row}`}>
-                <div className={styles.rowMain}>
-                  <div className={styles.question}>
-                    <Link href={`/market/${t.marketPda}`}>
-                      Market <span className="mono">{shortPda(t.marketPda)}</span>
-                    </Link>
-                  </div>
-                  <div className={styles.sub}>
-                    <span className={styles.amount}>{fmtUsdc(t.deposited)} test-USDC deposited</span>
-                    {t.locked > 0n && <span>{fmtUsdc(t.locked)} locked</span>}
-                    {t.status === TRADING_STATUS_MATCHED && <span>matched {fmtUsdc(t.matchedSize)}</span>}
-                    {t.available > 0n && <span className={styles.amount}>{fmtUsdc(t.available)} withdrawable</span>}
-                  </div>
-                </div>
-                <div className={styles.rowMeta}>
-                  <span className="pill" data-tone={tradingStatusTone(t.status)}>
-                    {TRADING_STATUS_NAMES[t.status] ?? t.status}
-                  </span>
-                  {canWithdrawTa(t) && (
-                    <Link href={`/market/${t.marketPda}`} className="button" data-variant="ghost">
-                      Go withdraw →
-                    </Link>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ---- AMM positions (continuous trading) ---- */}
-      <section className={styles.section}>
-        <h2>AMM positions (trade-anytime markets)</h2>
+        <h2>Your positions · trade-anytime markets</h2>
         {ammPositionsQuery.isPending ? (
           <div className={styles.rows} aria-hidden>
             <div className={`skeleton ${styles.skelRow}`} />
@@ -365,8 +318,7 @@ export default function PortfolioPage() {
           <p className={styles.error}>{friendlyError(ammPositionsQuery.error)}</p>
         ) : !ammPositionsQuery.data || ammPositionsQuery.data.length === 0 ? (
           <div className={styles.empty}>
-            No AMM positions yet — <Link href="/markets">browse markets →</Link>. (A position currently delegated
-            to the Ephemeral Rollup shows up on its own market page rather than here until it moves back to base.)
+            No positions yet — <Link href="/markets">browse markets →</Link>
           </div>
         ) : (
           <div className={styles.rows}>
@@ -410,9 +362,51 @@ export default function PortfolioPage() {
         )}
       </section>
 
-      {/* ---- Positions ---- */}
+      {/* ---- Sealed fast-trade accounts (advanced; ER is a speed layer, not
+          a separate product — hidden entirely when the wallet has none) ---- */}
+      {(tradingAccountsQuery.isError || (tas && tas.length > 0)) && (
+        <section className={styles.section}>
+          <h2>Sealed fast-trade accounts · advanced</h2>
+          {tradingAccountsQuery.isError ? (
+            <p className={styles.error}>{friendlyError(tradingAccountsQuery.error)}</p>
+          ) : (
+            <div className={styles.rows}>
+              {tas!.map((t) => (
+                <div key={t.pda} className={`card ${styles.row}`}>
+                  <div className={styles.rowMain}>
+                    <div className={styles.question}>
+                      <Link href={`/market/${t.marketPda}`}>
+                        Market <span className="mono">{shortPda(t.marketPda)}</span>
+                      </Link>
+                    </div>
+                    <div className={styles.sub}>
+                      <span className={styles.amount}>{fmtUsdc(t.deposited)} test-USDC deposited</span>
+                      {t.locked > 0n && <span>{fmtUsdc(t.locked)} locked</span>}
+                      {t.status === TRADING_STATUS_MATCHED && <span>matched {fmtUsdc(t.matchedSize)}</span>}
+                      {t.available > 0n && <span className={styles.amount}>{fmtUsdc(t.available)} withdrawable</span>}
+                    </div>
+                  </div>
+                  <div className={styles.rowMeta}>
+                    <span className="pill" data-tone={tradingStatusTone(t.status)}>
+                      {TRADING_STATUS_NAMES[t.status] ?? t.status}
+                    </span>
+                    {canWithdrawTa(t) && (
+                      <Link href={`/market/${t.marketPda}`} className="button" data-variant="ghost">
+                        Go withdraw →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ---- Parimutuel stakes (legacy join_market flow) — hidden when empty ---- */}
+      {(positionsQuery.isError || (rows && rows.length > 0)) && (
       <section className={styles.section}>
-        <h2>Positions</h2>
+        <h2>Parimutuel stakes · legacy markets</h2>
         {positionsQuery.isPending ? (
           <div className={styles.rows} aria-hidden>
             <div className={`skeleton ${styles.skelRow}`} />
@@ -482,22 +476,15 @@ export default function PortfolioPage() {
           </p>
         )}
       </section>
+      )}
 
-      {/* ---- Pending sealed orders ---- */}
+      {/* ---- Pending sealed orders (advanced) — hidden when empty ---- */}
+      {(ordersQuery.isError || (pendingOrders && pendingOrders.length > 0)) && (
       <section className={styles.section}>
-        <h2>Pending sealed orders</h2>
-        {ordersQuery.isPending ? (
-          <div className={styles.rows} aria-hidden>
-            <div className={`skeleton ${styles.skelRow}`} />
-          </div>
-        ) : ordersQuery.isError ? (
+        <h2>Pending sealed orders · advanced</h2>
+        {ordersQuery.isError ? (
           <p className={styles.error}>{friendlyError(ordersQuery.error)}</p>
-        ) : !pendingOrders || pendingOrders.length === 0 ? (
-          <div className={styles.empty}>
-            No pending sealed orders — matched and refunded orders leave this
-            list. <Link href="/markets">Browse markets →</Link>
-          </div>
-        ) : (
+        ) : !pendingOrders || pendingOrders.length === 0 ? null : (
           <div className={styles.rows}>
             {pendingOrders.map((o) => (
               <div key={o.pda} className={`card ${styles.row}`}>
@@ -527,18 +514,15 @@ export default function PortfolioPage() {
           </div>
         )}
       </section>
+      )}
 
-      {/* ---- Receipts ---- */}
+      {/* ---- Receipts — hidden when empty ---- */}
+      {receiptMarkets.length > 0 && (
       <section className={styles.section}>
         <h2>Receipts</h2>
         {positionsQuery.isPending ? (
           <div className={styles.rows} aria-hidden>
             <div className={`skeleton ${styles.skelRow}`} />
-          </div>
-        ) : receiptMarkets.length === 0 ? (
-          <div className={styles.empty}>
-            No settled positions yet — a verifiable settlement receipt appears
-            here once a market you hold a position in settles.
           </div>
         ) : (
           <div className={styles.rows}>
@@ -571,6 +555,7 @@ export default function PortfolioPage() {
           </div>
         )}
       </section>
+      )}
 
       <p className={styles.footNote}>
         All data on this page is live devnet state read from program{" "}

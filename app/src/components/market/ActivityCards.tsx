@@ -6,8 +6,8 @@
 // takes itself), and every trade row carries the real transaction signature.
 // When there's nothing real to show, the cards hide — never fabricate.
 
-import { useAmmPriceHistory } from "@/lib/hooks";
-import { explorerTxUrl } from "@/lib/onchain";
+import { useAmmPriceHistory, useRoutedAmmPool } from "@/lib/hooks";
+import { explorerTxUrlFor } from "@/lib/onchain";
 import styles from "./PricePanel.module.css";
 
 const W = 600;
@@ -82,6 +82,10 @@ export function PriceHistoryCard({ marketPda }: { marketPda: string }) {
 
 export function RecentTradesCard({ marketPda }: { marketPda: string }) {
   const { data } = useAmmPriceHistory([marketPda]);
+  // ER-delegated market: its swaps live on the ER ledger, so tx links must
+  // point the explorer at the ER RPC (a plain devnet link shows Not Found).
+  const routed = useRoutedAmmPool(marketPda);
+  const txRpc = routed.isDelegated ? routed.connection.rpcEndpoint : null;
   const trades = data?.[marketPda]?.trades ?? [];
   if (trades.length === 0) return null;
 
@@ -98,7 +102,13 @@ export function RecentTradesCard({ marketPda }: { marketPda: string }) {
               {t.amountIn !== "0" ? `${(Number(t.amountIn) / 1e6).toFixed(2)} ${t.dir === 0 ? "tUSDC" : "tokens"}` : ""}
             </span>
             <span className={styles.tradeWhen}>{timeAgo(t.t)}</span>
-            <a href={explorerTxUrl(t.sig)} target="_blank" rel="noreferrer" className={styles.tradeLink}>
+            <a
+              href={explorerTxUrlFor(t.sig, txRpc)}
+              target="_blank"
+              rel="noreferrer"
+              className={styles.tradeLink}
+              title={txRpc ? "Ephemeral Rollup transaction — explorer opens pointed at the ER's RPC" : "Base devnet transaction"}
+            >
               tx ↗
             </a>
           </li>
