@@ -59,7 +59,10 @@ export async function getLiveFixtures(): Promise<LiveFixture[]> {
     try {
       const res = await fetch(`${API_BASE_URL}/fixtures/snapshot`, {
         headers: { Authorization: `Bearer ${JWT}`, "X-Api-Token": API_TOKEN, "Accept-Encoding": "deflate" },
-        cache: "no-store",
+        // NOT no-store: an explicit no-store fetch opts every route that
+        // calls this into fully dynamic rendering (it broke the landing
+        // page's ISR). Freshness is already bounded by the TTL cache above.
+        next: { revalidate: 30 },
       });
       if (res.ok) {
         const raw = (await res.json()) as RawFixture[];

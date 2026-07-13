@@ -28,7 +28,10 @@ import type { DemoData } from "@/components/landing/TradeDemo";
 import { LandingHero } from "@/components/landing/LandingHero";
 import styles from "./landing.module.css";
 
-export const dynamic = "force-dynamic";
+// ISR, not force-dynamic: re-rendering this page blocked navigation on a
+// fixtures fetch + two getProgramAccounts scans EVERY time someone came back
+// to the landing page. A 15s-stale cached render is still all-real data.
+export const revalidate = 15;
 
 interface PreviewMarket {
   pda: string;
@@ -58,8 +61,11 @@ interface LiveData {
 
 async function getLiveData(): Promise<LiveData | null> {
   try {
-    await getLiveFixtures().then(primeLiveFixtures).catch(() => {});
-    const markets = await listMarkets();
+    // fixtures + markets in parallel — they're independent reads
+    const [markets] = await Promise.all([
+      listMarkets(),
+      getLiveFixtures().then(primeLiveFixtures).catch(() => {}),
+    ]);
     const pools = await getAmmPoolsForMarkets(markets.map((m) => m.pda));
     let volumeRaw = 0n;
     let settledCount = 0;

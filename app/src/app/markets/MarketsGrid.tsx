@@ -496,8 +496,20 @@ export function MarketsGrid() {
 
     let collapsed = 0;
     const built: Row[] = [];
+    // A market you can trade RIGHT NOW must always win its dedupe group —
+    // ranking purely by status hid freshly created markets behind older
+    // settled ones with the same predicate (settled outranked open, and the
+    // Markets tab only shows open ⇒ the new market vanished for everyone).
+    const tradeableNow = (m: OnChainMarket) =>
+      (m.status === STATUS_OPEN || m.status === STATUS_LIVE) && Number(m.deadline) * 1000 > now;
     for (const group of groups.values()) {
-      const shown = [...group].sort((a, b) => statusRank(b.status) - statusRank(a.status))[0]!;
+      const shown = [...group].sort((a, b) => {
+        const at = tradeableNow(a);
+        if (at !== tradeableNow(b)) return at ? -1 : 1;
+        const sr = statusRank(b.status) - statusRank(a.status);
+        if (sr !== 0) return sr;
+        return b.createdSlot > a.createdSlot ? 1 : a.createdSlot > b.createdSlot ? -1 : 0;
+      })[0]!;
       collapsed += group.length - 1;
       const fixtureId = Number(shown.fixtureId);
       const info = getFixtureInfo(fixtureId);
@@ -518,9 +530,12 @@ export function MarketsGrid() {
         raw,
         searchText: `${fixtureLabel} ${title} ${raw} ${fixtureId}`.toLowerCase(),
         active,
-        // curated = a card a first-time visitor should see: resolved team
-        // names AND a real pool. Everything else stays reachable in Archive.
-        curated: info !== null && (ammPools?.has(shown.pda) ?? false),
+        // curated = a card a first-time visitor should see: any market with
+        // a real pool. Requiring resolved team names here hid user-created
+        // markets (e.g. on the demo fixture, whose names aren't in the live
+        // window) from EVERY visitor — unknown fixtures now show with the
+        // honest "fixture #id" fallback instead of being invisible.
+        curated: ammPools?.has(shown.pda) ?? false,
       });
     }
     return { rows: built, hiddenCount: hidden, collapsedCount: collapsed };

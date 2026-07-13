@@ -12,11 +12,9 @@ export default function LobbyPage() {
     <>
       <h1>World Cup markets</h1>
       <p className="muted">
-        Live on-chain markets read directly from the ONYX program on devnet —
-        every card below is a real{" "}
-        <span className="mono">getProgramAccounts</span> result, not mock
-        data. Settlement is trustless: a CPI into TxLINE&apos;s{" "}
-        <span className="mono">validate_stat</span>.
+        Back your read on the World Cup — goals, cards, corners — with live
+        Yes/No prices. Every market lives on-chain and settles automatically
+        against official match data. Nothing here is simulated.
       </p>
       <MarketsGrid />
     </>

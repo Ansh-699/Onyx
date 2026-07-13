@@ -102,6 +102,14 @@ export function AmmTradingPanel({
 
   const marketPk = useMemo(() => new PublicKey(market.pda), [market.pda]);
   const myPosition = useAmmPosition(market.pda, publicKey, connection);
+  // Base-ledger probe: when the market is ER-delegated but the user's funds
+  // sit in a base position (deposited via "approve each trade"), the routed
+  // read above is null — this tells that state apart from "never deposited",
+  // so the "finish setup" box only shows when there's actually something to move.
+  const baseConn = useMemo(() => getConnection(), []);
+  const basePosition = useAmmPosition(market.pda, publicKey, baseConn);
+  const basePos = basePosition.data;
+  const baseHasFunds = !!basePos && (basePos.usdcAvailable > 0n || basePos.tokensA > 0n || basePos.tokensB > 0n);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -429,7 +437,7 @@ export function AmmTradingPanel({
 
       {!connected && <WalletButton />}
 
-      {connected && tradingOpen && (!position || position.usdcAvailable === 0n) && (position?.tokensA ?? 0n) === 0n && (position?.tokensB ?? 0n) === 0n && (
+      {connected && tradingOpen && !(isDelegated && baseHasFunds) && (!position || position.usdcAvailable === 0n) && (position?.tokensA ?? 0n) === 0n && (position?.tokensB ?? 0n) === 0n && (
         <div className={styles.step}>
           <div className={styles.stepHead}>
             <span className={styles.stepNum}>1</span> Add funds to trade
@@ -613,13 +621,12 @@ export function AmmTradingPanel({
           </button>
         </div>
       )}
-      {connected && tradingOpen && isDelegated && !position && myPosition.isFetched && (
+      {connected && tradingOpen && isDelegated && !position && myPosition.isFetched && baseHasFunds && (
         <div className={styles.step}>
           <div className={styles.stepHead}>One more approval to finish setup</div>
           <p className={styles.blurb}>
-            This market trades on the speed layer, but your funds are still on the slower base ledger (this
-            happens after &ldquo;add funds &amp; approve each trade&rdquo;). One approval moves them over so
-            buys and sells work here.
+            Your funds are in this market but on the slower base ledger, while trading runs on the speed
+            layer. One approval moves them over so buys and sells work here.
           </p>
           <button className="button" data-variant="ghost" type="button" onClick={onDelegateMyPosition} disabled={!!busy}>
             Finish setup (1 approval)

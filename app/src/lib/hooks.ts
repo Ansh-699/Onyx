@@ -8,7 +8,6 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { PublicKey } from "@solana/web3.js";
 import { useQuery, useQueryClient, keepPreviousData, type QueryClient } from "@tanstack/react-query";
 import {
-  listMarkets,
   getMarket,
   listSealedOrders,
   getConnection,
@@ -19,7 +18,6 @@ import {
   ammPoolExists,
   getAmmPool,
   getAmmPosition,
-  getAmmPoolsForMarkets,
   getAmmPositionCounts,
   type AmmPoolSummary,
   listAmmPositionsForOwner,
@@ -31,11 +29,26 @@ import {
 } from "./onchain";
 import { getDelegationStatus, getErConnection, type DelegationStatus } from "./erRouting";
 
-/** All ONYX markets on devnet, newest first. ~20s poll (getProgramAccounts is heavy). */
+// Markets + pool summaries come through /api/markets — a server-side 8s
+// cache shared by every visitor — instead of each browser paying the ~3s
+// getProgramAccounts scans itself. bigints travel as {$bigint: "..."}.
+const reviveBigint = (_k: string, v: unknown) =>
+  v !== null && typeof v === "object" && "$bigint" in (v as Record<string, unknown>)
+    ? BigInt((v as { $bigint: string }).$bigint)
+    : v;
+
+async function fetchMarketsBundle(): Promise<{ markets: OnChainMarket[]; pools: Map<string, AmmPoolSummary> }> {
+  const res = await fetch("/api/markets", { cache: "no-store" });
+  if (!res.ok) throw new Error(`markets ${res.status}`);
+  const body = JSON.parse(await res.text(), reviveBigint) as { markets: OnChainMarket[]; pools: AmmPoolSummary[] };
+  return { markets: body.markets, pools: new Map(body.pools.map((p) => [p.market, p])) };
+}
+
+/** All ONYX markets on devnet, newest first. ~20s poll of the shared server cache. */
 export function useMarkets(initialData?: OnChainMarket[]) {
   return useQuery({
     queryKey: ["markets"],
-    queryFn: listMarkets,
+    queryFn: () => fetchMarketsBundle().then((b) => b.markets),
     refetchInterval: 20_000,
     placeholderData: keepPreviousData,
     initialData,
@@ -94,6 +107,7 @@ export function useDelegationStatus(pubkey: PublicKey | null) {
 export function useRoutedMarket(pda: string) {
   const marketPk = useMemo(() => (pda ? new PublicKey(pda) : null), [pda]);
   const delegation = useDelegationStatus(marketPk);
+  const queryClient = useQueryClient();
 
   const connection = useMemo(() => {
     if (delegation.data?.isDelegated && delegation.data.fqdn) return getErConnection(delegation.data.fqdn);
@@ -104,7 +118,12 @@ export function useRoutedMarket(pda: string) {
     queryKey: ["routedMarket", pda, delegation.data?.isDelegated ?? false, delegation.data?.fqdn ?? null],
     queryFn: () => getMarket(pda, connection),
     refetchInterval: 2_500,
-    placeholderData: keepPreviousData,
+    // Instant paint when arriving from the lobby: the market is already in
+    // the ["markets"] list cache — render that (real on-chain data, ≤20s
+    // old) while the router lookup + routed read resolve. Falls back to
+    // keepPreviousData behavior across delegation-flip key changes.
+    placeholderData: (prev) =>
+      prev ?? queryClient.getQueryData<OnChainMarket[]>(["markets"])?.find((m) => m.pda === pda),
     enabled: !!pda && delegation.isFetched,
   });
 
@@ -210,10 +229,11 @@ export function useAmmPosition(marketPda: string, owner: PublicKey | null, conne
  * for the ¢ price buttons. Map.has(marketPda) drives the AMM badge.
  */
 export function useAmmPoolMarkets(marketPdas: string[] | undefined) {
-  const key = marketPdas?.join(",") ?? "";
   return useQuery<Map<string, AmmPoolSummary>>({
-    queryKey: ["ammPools", key],
-    queryFn: () => getAmmPoolsForMarkets(marketPdas!),
+    // constant key: /api/markets returns pools for ALL markets (a superset
+    // of any caller's pda list), so every caller shares one cache entry
+    queryKey: ["ammPools"],
+    queryFn: () => fetchMarketsBundle().then((b) => b.pools),
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,
     enabled: !!marketPdas && marketPdas.length > 0,
