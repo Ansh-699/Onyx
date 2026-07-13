@@ -563,24 +563,6 @@
 
 /* ---------- portfolio preview screen ---------- */
 
-.portfolioScreen {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 20px 22px;
-}
-
-.positionRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
-  border: 1px solid var(--p-border);
-  border-radius: 12px;
-  background: var(--p-card);
-}
-
 .positionMain {
   display: flex;
   flex-direction: column;
@@ -609,45 +591,429 @@
 
 .activityRow {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 14px;
   padding: 10px 14px;
   border: 1px solid var(--p-border);
+  border-left-width: 3px;
   border-radius: 10px;
   background: var(--p-card);
-  font-size: 0.82rem;
+  font-size: 0.84rem;
 }
 
-.activitySide {
+.activityRow[data-side="1"] {
+  border-left-color: rgba(74, 222, 128, 0.55);
+}
+
+.activityRow[data-side="2"] {
+  border-left-color: rgba(248, 113, 113, 0.5);
+}
+
+.activityBadge {
+  flex: 0 0 96px;
+  text-align: center;
+  padding: 5px 0;
+  border-radius: 8px;
+  font-size: 0.74rem;
   font-weight: 700;
-  min-width: 86px;
 }
 
-.activitySide[data-side="1"] {
+.activityBadge[data-side="1"] {
   color: var(--p-green);
+  background: rgba(74, 222, 128, 0.13);
 }
 
-.activitySide[data-side="2"] {
+.activityBadge[data-side="2"] {
   color: var(--p-red);
+  background: rgba(248, 113, 113, 0.12);
 }
 
-.activityTitle {
+.activityMain {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activityPredicate {
+  font-weight: 650;
+  font-size: 0.86rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--p-dim);
 }
 
-.activityAmt {
+.activityNums {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.activityValue {
   font-family: var(--font-mono);
   font-weight: 700;
-  white-space: nowrap;
+}
+
+.activityValue[data-side="1"] {
+  color: var(--p-green);
+}
+
+.activityValue[data-side="2"] {
+  color: var(--p-red);
 }
 
 .activityWhen {
   font-size: 0.72rem;
   color: var(--p-dim);
   white-space: nowrap;
+}
+
+/* ---------- shared screen note ---------- */
+
+.screenNote {
+  padding: 14px 22px 0;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--p-dim);
+}
+
+.pfScreen .screenNote,
+.activityScreen .screenNote {
+  padding: 0;
+}
+
+/* ---------- chart hover (crosshair + tooltip) ---------- */
+
+.chart {
+  cursor: crosshair;
+}
+
+.hoverLayer {
+  pointer-events: none;
+}
+
+.crosshair {
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.dotYes {
+  fill: var(--p-green);
+  stroke: #0d1016;
+  stroke-width: 1.5;
+}
+
+.dotNo {
+  fill: var(--p-red);
+  stroke: #0d1016;
+  stroke-width: 1.5;
+}
+
+.tipBox {
+  fill: #1a202c;
+  stroke: rgba(255, 255, 255, 0.14);
+}
+
+.tipText {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  fill: var(--p-dim);
+}
+
+.tipYes {
+  fill: var(--p-green);
+}
+
+.tipNo {
+  fill: var(--p-red);
+}
+
+/* ---------- markets screen extras ---------- */
+
+.previewCard {
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.previewCard:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.previewCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sampleTag {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--p-dim);
+  border: 1px solid var(--p-border);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+
+.previewMid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.previewChance {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.spark {
+  width: 62px;
+  height: 17px;
+  flex: none;
+}
+
+.spark polyline {
+  fill: none;
+  stroke-width: 1.6;
+  stroke: var(--p-red);
+}
+
+.spark polyline[data-up="true"] {
+  stroke: var(--p-green);
+}
+
+/* ---------- portfolio screen (Space-style) ---------- */
+
+.pfScreen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+}
+
+.pfTop {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 720px) {
+  .pfTop {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pfLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pfCard {
+  position: relative;
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  border: 1px solid var(--p-border);
+}
+
+.pfGreen {
+  background: linear-gradient(135deg, #0c2b18 0%, #123c22 55%, #0f4d26 100%);
+}
+
+.pfBlue {
+  background: linear-gradient(135deg, #0d1f3c 0%, #133061 60%, #1a3f80 100%);
+}
+
+.pfCardLabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.pfBig {
+  font-family: var(--font-mono);
+  font-size: 1.55rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.pfUnit {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.pfArrow {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  width: 44px;
+  height: 30px;
+}
+
+.pfArrow path {
+  fill: none;
+  stroke: var(--p-green);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pfBtns {
+  display: flex;
+  gap: 8px;
+}
+
+.depositBtn,
+.withdrawBtn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-radius: 12px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: default;
+}
+
+.depositBtn {
+  background: #fff;
+  color: #10131a;
+}
+
+.withdrawBtn {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--p-text);
+  border: 1px solid var(--p-border);
+}
+
+.pfBtnIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #10131a;
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.pfBtnIcon[data-ghost="true"] {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.plCard {
+  border: 1px solid var(--p-border);
+  border-radius: 14px;
+  background: var(--p-card);
+  padding: 14px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plValue {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.plPct {
+  color: var(--p-green);
+  font-size: 0.85rem;
+}
+
+.plChart {
+  width: 100%;
+  height: auto;
+}
+
+.plChart path {
+  fill: none;
+  stroke: var(--p-green);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+
+.plChart circle {
+  fill: var(--p-green);
+}
+
+.plGrid {
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-dasharray: 2 4;
+}
+
+.posTable {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.posHead {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--p-dim);
+}
+
+.posRow {
+  display: grid;
+  grid-template-columns: 1fr 64px 130px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border: 1px solid var(--p-border);
+  border-radius: 12px;
+  background: var(--p-card);
+}
+
+.posSide {
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.posSide[data-side="Yes"] {
+  color: var(--p-green);
+  background: rgba(74, 222, 128, 0.13);
+}
+
+.posSide[data-side="No"] {
+  color: var(--p-red);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.posCur {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-align: right;
 }

@@ -18,7 +18,7 @@ import logoGemDark from "@/assets/onyx-gem.png";
 import logoGemLight from "@/assets/onyx-gem-light.png";
 import solanaLogo from "@/assets/Solana-Round-Logo-PNG.png";
 import magicblockLogo from "@/assets/magicblock.jpg";
-import { TradeScreen, type DemoData } from "./TradeDemo";
+import { TradeScreen, seededRng, type DemoData } from "./TradeDemo";
 import { ChromeCta } from "./ChromeCta";
 import demoStyles from "./TradeDemo.module.css";
 import styles from "@/app/landing.module.css";
@@ -62,66 +62,193 @@ function fmt(n: number, dp = 2): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 
-/** Markets screen: real markets, non-navigating preview cards. */
-function MarketsScreen({ preview }: { preview: PreviewMarket[] }) {
+/** Tiny seeded sparkline for preview cards. */
+function Spark({ seed, up }: { seed: string; up: boolean }) {
+  const rnd = seededRng(seed);
+  let v = up ? 9 : 4;
+  const pts: string[] = [];
+  for (let i = 0; i < 16; i++) {
+    v += (rnd() - (up ? 0.58 : 0.42)) * 3.2;
+    v = Math.min(15, Math.max(2, v));
+    pts.push(`${(i / 15) * 62},${v.toFixed(1)}`);
+  }
   return (
-    <div className={demoStyles.marketsScreen}>
-      {preview.map((p) => (
-        <div key={p.pda} className={demoStyles.previewCard}>
-          <span className={demoStyles.fixture}>{p.fixture}</span>
-          <span className={demoStyles.previewTitle}>{p.title}</span>
-          <span className={demoStyles.previewPrices}>
-            <span className={demoStyles.pvYes}>Yes {p.yesCents}¢</span>
-            <span className={demoStyles.pvNo}>No {100 - p.yesCents}¢</span>
-          </span>
-          <span className={demoStyles.chipLabel}>{p.volume} tUSDC traded</span>
-        </div>
-      ))}
-    </div>
+    <svg viewBox="0 0 62 17" className={demoStyles.spark} aria-hidden>
+      <polyline points={pts.join(" ")} data-up={up} />
+    </svg>
   );
 }
 
-/** Portfolio screen: small, clearly-labeled demo positions in tUSDC. */
-function PortfolioScreen({ preview }: { preview: PreviewMarket[] }) {
-  const rows = preview.slice(0, 2).map((p, i) => {
-    const shares = i === 0 ? 2.99 : 5.5;
-    const value = (shares * (i === 0 ? p.yesCents : 100 - p.yesCents)) / 100;
-    const cost = i === 0 ? 1.4 : 3.1;
-    return { p, side: i === 0 ? "YES" : "NO", shares, value, pl: value - cost };
-  });
+// Sample cards padding the grid out to six — REAL upcoming World Cup
+// fixtures (from the verified TxLINE window), illustrative prices/volumes,
+// each tagged "sample" on the card.
+const SAMPLE_MARKETS = [
+  { fixture: "🇳🇴 Norway vs England 🏴󠁧󠁢󠁥󠁮󠁧󠁿", title: "England goals — over 2.5", yesCents: 41, volume: "312" },
+  { fixture: "🇪🇸 Spain vs Belgium 🇧🇪", title: "Total corners — over 9.5", yesCents: 62, volume: "187" },
+  { fixture: "🇦🇷 Argentina vs Switzerland 🇨🇭", title: "Total yellow cards — over 4.5", yesCents: 33, volume: "254" },
+  { fixture: "🇳🇴 Norway vs England 🏴󠁧󠁢󠁥󠁮󠁧󠁿", title: "Norway goals — over 0.5", yesCents: 71, volume: "146" },
+] as const;
+
+/** Markets screen: real market cards first, sample cards fill the grid. */
+function MarketsScreen({ preview }: { preview: PreviewMarket[] }) {
+  const cards = [
+    ...preview.map((p) => ({ ...p, sample: false as const })),
+    ...SAMPLE_MARKETS.map((m, i) => ({ ...m, pda: `sample-${i}`, sample: true as const })),
+  ].slice(0, 6);
   return (
-    <div className={demoStyles.portfolioScreen}>
-      <div className={demoStyles.chipLabel}>sample portfolio · demo figures · devnet tUSDC</div>
-      {rows.map((r) => (
-        <div key={r.p.pda} className={demoStyles.positionRow}>
-          <div className={demoStyles.positionMain}>
-            <span className={demoStyles.previewTitle}>{r.p.title}</span>
+    <div>
+      <div className={demoStyles.screenNote}>open markets · live cards from devnet · illustrative cards tagged “sample”</div>
+      <div className={demoStyles.marketsScreen}>
+        {cards.map((p) => (
+          <div key={p.pda} className={demoStyles.previewCard}>
+            <span className={demoStyles.previewCardTop}>
+              <span className={demoStyles.fixture}>{p.fixture}</span>
+              {p.sample && <span className={demoStyles.sampleTag}>sample</span>}
+            </span>
+            <span className={demoStyles.previewTitle}>{p.title}</span>
+            <span className={demoStyles.previewMid}>
+              <span className={demoStyles.previewChance}>
+                {p.yesCents}% <span className={demoStyles.chipLabel}>chance</span>
+              </span>
+              <Spark seed={p.title} up={p.yesCents >= 50} />
+            </span>
+            <span className={demoStyles.previewPrices}>
+              <span className={demoStyles.pvYes}>Yes {p.yesCents}¢</span>
+              <span className={demoStyles.pvNo}>No {100 - p.yesCents}¢</span>
+            </span>
             <span className={demoStyles.chipLabel}>
-              {fmt(r.shares)} {r.side} · {r.p.fixture}
+              ⚡ flash trade · {p.volume} tUSDC vol
             </span>
           </div>
-          <div className={demoStyles.positionNums}>
-            <span>{fmt(r.value)} tUSDC</span>
-            <span className={demoStyles.delta} data-up={r.pl >= 0}>
-              {r.pl >= 0 ? "▲" : "▼"} {fmt(Math.abs(r.pl))}
-            </span>
-          </div>
-        </div>
-      ))}
-      <div className={demoStyles.positionRow}>
-        <div className={demoStyles.positionMain}>
-          <span className={demoStyles.previewTitle}>Ready to withdraw</span>
-          <span className={demoStyles.chipLabel}>settled market · winnings redeem 1:1</span>
-        </div>
-        <div className={demoStyles.positionNums}>
-          <span className={demoStyles.toWin}>+38.37 tUSDC</span>
-        </div>
+        ))}
       </div>
     </div>
   );
 }
 
-/** Activity screen: recent REAL recorded swaps (each exists on-chain). */
+/** P/L chart for the portfolio screen — seeded upward walk, green line. */
+function PlChart() {
+  const rnd = seededRng("onyx-pl");
+  const W = 470;
+  const H = 148;
+  let v = 108;
+  const pts: [number, number][] = [];
+  for (let i = 0; i < 40; i++) {
+    v += (rnd() - 0.62) * 14;
+    v = Math.min(132, Math.max(28, v));
+    pts.push([12 + (i / 39) * (W - 24), i === 39 ? 30 : v]);
+  }
+  const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1]!;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className={demoStyles.plChart} aria-hidden>
+      {[0.25, 0.5, 0.75].map((k) => (
+        <line key={k} x1={12} x2={W - 12} y1={H * k} y2={H * k} className={demoStyles.plGrid} />
+      ))}
+      <path d={d} />
+      <circle cx={last[0]} cy={last[1]} r={4} />
+    </svg>
+  );
+}
+
+/** Portfolio screen: Space-style value/balance cards + P/L + positions table. All sample figures. */
+function PortfolioScreen({ preview }: { preview: PreviewMarket[] }) {
+  const positions = [0, 1, 2].map((i) => {
+    const p = preview[i];
+    const base = [
+      { shares: 42.1, at: 33, side: "Yes" },
+      { shares: 18.6, at: 58, side: "No" },
+      { shares: 9.4, at: 22, side: "Yes" },
+    ][i]!;
+    const cur = p ? (base.side === "Yes" ? p.yesCents : 100 - p.yesCents) : [69, 74, 51][i]!;
+    const sample = SAMPLE_MARKETS[i]!;
+    const value = (base.shares * cur) / 100;
+    const pl = value - (base.shares * base.at) / 100;
+    return {
+      key: p?.pda ?? `s${i}`,
+      title: p?.title ?? sample.title,
+      fixture: p?.fixture ?? sample.fixture,
+      live: !!p,
+      ...base,
+      cur,
+      value,
+      pl,
+    };
+  });
+  return (
+    <div className={demoStyles.pfScreen}>
+      <div className={demoStyles.pfTop}>
+        <div className={demoStyles.pfLeft}>
+          <div className={`${demoStyles.pfCard} ${demoStyles.pfGreen}`}>
+            <span className={demoStyles.pfCardLabel}>◔ Portfolio</span>
+            <span className={demoStyles.pfBig}>
+              146.02 <span className={demoStyles.pfUnit}>tUSDC</span>
+            </span>
+            <svg viewBox="0 0 44 30" className={demoStyles.pfArrow} aria-hidden>
+              <path d="M2 26 L14 15 L22 20 L40 4 M30 4 h10 v10" />
+            </svg>
+          </div>
+          <div className={`${demoStyles.pfCard} ${demoStyles.pfBlue}`}>
+            <span className={demoStyles.pfCardLabel}>◎ Balance</span>
+            <span className={demoStyles.pfBig}>
+              32.40 <span className={demoStyles.pfUnit}>tUSDC</span>
+            </span>
+          </div>
+          <div className={demoStyles.pfBtns}>
+            <span className={demoStyles.depositBtn} role="presentation">
+              <span className={demoStyles.pfBtnIcon}>↓</span> Deposit
+            </span>
+            <span className={demoStyles.withdrawBtn} role="presentation">
+              <span className={demoStyles.pfBtnIcon} data-ghost="true">↑</span> Withdraw
+            </span>
+          </div>
+        </div>
+        <div className={demoStyles.plCard}>
+          <div className={demoStyles.plHead}>
+            <span className={demoStyles.chipLabel}>📊 Profit/Loss</span>
+            <span className={demoStyles.plValue}>
+              +18.62 tUSDC <span className={demoStyles.plPct}>▲ 14.6%</span>
+            </span>
+            <span className={demoStyles.chipLabel}>past month</span>
+          </div>
+          <PlChart />
+        </div>
+      </div>
+
+      <div className={demoStyles.posTable}>
+        <div className={demoStyles.posHead}>
+          <span>Positions</span>
+          <span>Current</span>
+          <span>Value</span>
+        </div>
+        {positions.map((r) => (
+          <div key={r.key} className={demoStyles.posRow}>
+            <div className={demoStyles.positionMain}>
+              <span className={demoStyles.previewTitle}>{r.title}</span>
+              <span className={demoStyles.chipLabel}>
+                <span className={demoStyles.posSide} data-side={r.side}>
+                  {r.side}
+                </span>{" "}
+                {fmt(r.shares, 1)} shares at {r.at}¢ · {r.fixture}
+              </span>
+            </div>
+            <span className={demoStyles.posCur}>{r.cur}¢</span>
+            <div className={demoStyles.positionNums}>
+              <span>{fmt(r.value)}</span>
+              <span className={demoStyles.delta} data-up={r.pl >= 0}>
+                {r.pl >= 0 ? "+" : "−"}
+                {fmt(Math.abs(r.pl))} ({Math.round((Math.abs(r.pl) / Math.max(0.01, (r.shares * r.at) / 100)) * 100)}%)
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className={demoStyles.screenNote}>sample portfolio · live prices where shown · devnet tUSDC</div>
+    </div>
+  );
+}
+
+/** Activity screen: recent REAL recorded swaps, enriched (shares, price, value, time). */
 function ActivityScreen({ activity }: { activity: ActivityRow[] }) {
   if (activity.length === 0) {
     return (
@@ -132,19 +259,35 @@ function ActivityScreen({ activity }: { activity: ActivityRow[] }) {
   }
   return (
     <div className={demoStyles.activityScreen}>
-      <div className={demoStyles.chipLabel}>recent trades · real recorded on-chain swaps · includes seeded market-making</div>
-      {activity.map((a, i) => (
-        <div key={`${a.t}-${i}`} className={demoStyles.activityRow}>
-          <span className={demoStyles.activitySide} data-side={a.side}>
-            {a.dir === 0 ? "Bought" : "Sold"} {a.side === 1 ? "Yes" : "No"}
-          </span>
-          <span className={demoStyles.activityTitle}>{a.title}</span>
-          <span className={demoStyles.activityAmt}>
-            {a.amount} {a.dir === 0 ? "tUSDC" : "tokens"} · {a.priceCents}¢
-          </span>
-          <span className={demoStyles.activityWhen}>{timeAgo(a.t)}</span>
-        </div>
-      ))}
+      <div className={demoStyles.screenNote}>recent trades · real recorded on-chain swaps · includes seeded market-making</div>
+      {activity.slice(0, 7).map((a, i) => {
+        const amt = parseFloat(a.amount) || 0;
+        const price = Math.max(1, a.priceCents);
+        // buys spend tUSDC → ≈shares out; sells send tokens → ≈tUSDC back
+        const isBuy = a.dir === 0;
+        const shares = isBuy ? (amt / price) * 100 : amt;
+        const value = isBuy ? amt : (amt * price) / 100;
+        const [fixture, predicate] = a.title.includes(" · ") ? [a.title.split(" · ")[0]!, a.title.split(" · ").slice(1).join(" · ")] : ["", a.title];
+        return (
+          <div key={`${a.t}-${i}`} className={demoStyles.activityRow} data-side={a.side}>
+            <span className={demoStyles.activityBadge} data-side={a.side}>
+              {isBuy ? "Bought" : "Sold"} {a.side === 1 ? "Yes" : "No"}
+            </span>
+            <div className={demoStyles.activityMain}>
+              <span className={demoStyles.activityPredicate}>{predicate}</span>
+              <span className={demoStyles.chipLabel}>
+                {fixture && `${fixture} · `}≈{fmt(shares, 1)} shares @ {price}¢
+              </span>
+            </div>
+            <div className={demoStyles.activityNums}>
+              <span className={demoStyles.activityValue} data-side={a.side}>
+                {isBuy ? "+" : "−"}{fmt(value)} tUSDC
+              </span>
+              <span className={demoStyles.activityWhen}>{timeAgo(a.t)}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -321,7 +464,7 @@ export function LandingHero({
               <span className={demoStyles.avatar} aria-hidden />
             </span>
           </div>
-          <div className={demoStyles.demoNote}>illustrative demo · real market data &amp; real AMM math · devnet tUSDC</div>
+          <div className={demoStyles.demoNote}>illustrative demo · live prices &amp; real AMM math · sample data tagged · devnet tUSDC</div>
 
           <div className={demoStyles.screens}>
             <div key={activeTab} className={demoStyles.screen}>
