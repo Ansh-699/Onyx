@@ -5,7 +5,7 @@
 // state with copy/explorer/disconnect. Portaled to document.body (glass
 // ancestors trap position:fixed — same lesson as Modal.tsx).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useWallet, type Wallet } from "@solana/wallet-adapter-react";
 import type { WalletName } from "@solana/wallet-adapter-base";
@@ -40,9 +40,18 @@ export function WalletDrawer({ open, onClose }: { open: boolean; onClose: () => 
     }
   }, [open, onClose]);
 
-  // Close automatically the moment a connection lands.
+  // Close automatically when a connection lands — but only if the drawer was
+  // opened DISCONNECTED. `open && connected` alone also matches "opened while
+  // already connected", which auto-closed the connected view 600ms after
+  // every open (looked like the drawer flashing and vanishing).
+  const openedConnected = useRef(false);
   useEffect(() => {
-    if (open && connected) {
+    if (open) openedConnected.current = connected;
+    // capture connection state at open time only — not when it changes later
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  useEffect(() => {
+    if (open && connected && !openedConnected.current) {
       if (wallet) localStorage.setItem(LAST_WALLET_KEY, wallet.adapter.name);
       const t = setTimeout(onClose, 600);
       return () => clearTimeout(t);
