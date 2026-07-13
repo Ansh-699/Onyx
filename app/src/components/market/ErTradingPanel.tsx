@@ -49,7 +49,7 @@ import {
 import { invalidateDelegationStatus } from "@/lib/erRouting";
 import { useTradingAccount, useTradingAccountsForMarket } from "@/lib/hooks";
 import { friendlyError, classifyWrongLedger } from "@/lib/errors";
-import { sendViaWallet } from "@/lib/tx";
+import { sendViaWallet, lastExecutionMs } from "@/lib/tx";
 import {
   buildDelegateMarketIx,
   buildOpenTradingAccountIx,
@@ -189,7 +189,9 @@ export function ErTradingPanel({
   async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
     const t0 = performance.now();
     const result = await fn();
-    const ms = Math.round(performance.now() - t0);
+    // broadcast→confirm time of the tx itself, not the whole flow (which
+    // includes the wallet-approval wait)
+    const ms = lastExecutionMs() ?? Math.round(performance.now() - t0);
     if (typeof result === "string") {
       setLog((prev) => [{ label, sig: result, ms }, ...prev].slice(0, 8));
     }

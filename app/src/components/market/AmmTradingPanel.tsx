@@ -46,7 +46,7 @@ import { invalidateDelegationStatus } from "@/lib/erRouting";
 import { useAmmPosition } from "@/lib/hooks";
 import { type TradingSession, loadSession, clearSession, buildRevokeSessionIx } from "@/lib/session";
 import { friendlyError, classifyWrongLedger } from "@/lib/errors";
-import { sendViaWallet, sendViaKeypair } from "@/lib/tx";
+import { sendViaWallet, sendViaKeypair, lastExecutionMs } from "@/lib/tx";
 import { startSessionAndDeposit, depositOnly, executeSwap, walletUsdcBalance, CLUSTER } from "@/lib/ammActions";
 import {
   buildRedeemAmmIx,
@@ -167,7 +167,9 @@ export function AmmTradingPanel({
   async function timed<T>(label: string, fn: () => Promise<T>, rpc?: string): Promise<T> {
     const t0 = performance.now();
     const result = await fn();
-    const ms = Math.round(performance.now() - t0);
+    // broadcast→confirm time of the tx itself, not the whole flow (which
+    // includes the wallet-approval wait and follow-up I/O)
+    const ms = lastExecutionMs() ?? Math.round(performance.now() - t0);
     if (typeof result === "string") setLog((prev) => [{ label, sig: result, ms, rpc }, ...prev].slice(0, 8));
     return result;
   }

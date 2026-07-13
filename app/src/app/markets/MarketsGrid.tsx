@@ -599,7 +599,10 @@ export function MarketsGrid() {
     return sorted;
   }, [rows, search, statusFilter, category, categoryFilter, sort, ammPools, now]);
 
-  const loading = data === undefined && !isError;
+  // Pools load AFTER markets (query keyed on marketPdas), and `curated`
+  // needs them — treating that gap as loaded flashed the "no markets are
+  // trading" empty state before every card appeared.
+  const loading = (data === undefined || (marketPdas.length > 0 && ammPools === undefined)) && !isError;
   const filtersActive = search.trim() !== "" || statusFilter !== "markets";
 
   const FILTERS: { id: StatusFilter; label: string; count: number }[] = [

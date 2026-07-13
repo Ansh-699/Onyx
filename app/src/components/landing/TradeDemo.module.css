@@ -479,7 +479,15 @@
 /* ---------- tabbed screens (cross-fade swap, no layout jump) ---------- */
 
 .screens {
-  min-height: 460px;
+  /* match the Trade screen's rendered height (~610px at desktop) so the
+     panel doesn't jump when switching to shorter tabs */
+  min-height: 610px;
+}
+
+@media (max-width: 860px) {
+  .screens {
+    min-height: 0;
+  }
 }
 
 .screen {

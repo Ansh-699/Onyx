@@ -1,158 +1,60 @@
-/* Chromatic-metal liquid-glass CTA — layer stack:
-   0 metal shader · 2 vignette · 3 glass pill (backdrop refracts the metal).
-   Knobs: --stroke-speed (ring sweep), --lift (hover rise). */
-
-.stack {
-  --stroke-speed: 4s;
-  --lift: -4px;
-  position: relative;
-  display: inline-flex;
-  margin-top: 22px;
-  border-radius: 100px;
-  overflow: hidden;
-  box-shadow: 0 14px 34px -8px rgba(4, 12, 36, 0.65);
-  isolation: isolate;
-  transform: translateY(0) scale(1);
-  transition:
-    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform, box-shadow;
-}
-
-.stack:hover {
-  transform: translateY(var(--lift)) scale(1.035);
-  box-shadow: 0 22px 48px -10px rgba(4, 12, 36, 0.7);
-}
-
-.stack:active {
-  transform: translateY(-1px) scale(0.995);
-}
-
-.metal {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-/* non-WebGL fallback: scrolling chrome bands + SVG warp/RGB-split filter.
-   67.293px vertical shift = one 64px period along the 108° axis (seamless). */
-.metalFallback {
-  background: repeating-linear-gradient(
-    108deg,
-    #f6f9ff 0px,
-    #c3cddc 14px,
-    #565f70 26px,
-    #0c1017 34px,
-    #8595ac 48px,
-    #f6f9ff 64px
-  );
-  filter: url(#onyx-chrome-warp);
-  animation: chromeFlow 4s linear infinite;
-}
-
-@keyframes chromeFlow {
-  to {
-    background-position: 0 67.293px;
-  }
-}
-
-.vignette {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 55%, rgba(2, 6, 18, 0.3) 100%);
-}
-
-.btnWrap {
-  position: relative;
-  z-index: 3;
-  display: flex;
-}
-
-/* ---- the glass pill ---- */
+/* Soft frosted "jelly" glass pill, tinted by the page behind it:
+   - no crisp border — a soft white rim (outer glow + inset glow)
+   - wide blurred white bloom hugging the top inner edge
+   - deeper-blue inner shadow at the bottom = thick-glass depth
+   The hero's blue shows through via backdrop-filter, so the pill
+   reads as part of the sky rather than an object on top of it. */
 
 .glassBtn {
-  pointer-events: auto;
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 34px;
+  margin-top: 22px;
+  padding: 12px 40px;
   border-radius: 100px;
+  overflow: hidden;
+  isolation: isolate;
   text-decoration: none;
-  /* glass body: bright top → near-clear middle → faint cool blue bottom */
+  /* glass body: bright top → near-clear → faint cool blue bottom */
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.52) 0%,
-    rgba(255, 255, 255, 0.10) 48%,
-    rgba(150, 185, 255, 0.16) 100%
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0.12) 55%,
+    rgba(130, 175, 255, 0.14) 100%
   );
-  border: 1px solid rgba(255, 255, 255, 0.78); /* crisp rim */
-  /* glass thickness: bright top inner highlight + soft blue bottom inner shadow */
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
   box-shadow:
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -10px 16px -8px rgba(70, 110, 220, 0.5);
-  /* REAL refraction of the metal behind (Chromium); declared after the
-     plain fallback so Safari/Firefox keep blur+saturate */
-  backdrop-filter: blur(6px) saturate(150%);
-  -webkit-backdrop-filter: blur(6px) saturate(150%);
-  backdrop-filter: url(#onyx-cta-refract) blur(5px) saturate(150%);
-  transition: filter 300ms ease;
+    /* soft diffused rim, not a hard 1px line */
+    0 0 0 1px rgba(255, 255, 255, 0.3),
+    0 0 14px 2px rgba(255, 255, 255, 0.35),
+    /* float */
+    0 12px 28px -12px rgba(15, 55, 135, 0.55),
+    /* inner rim glow + thick-glass bottom shadow */
+    inset 0 0 9px rgba(255, 255, 255, 0.5),
+    inset 0 -12px 20px -8px rgba(35, 95, 200, 0.45);
+  transform: translateY(0) scale(1);
+  transition:
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 300ms ease;
 }
 
-/* gloss band over the top ~45% */
+/* the puffy top bloom: a blurred white ellipse hugging the top edge */
 .glassBtn::before {
   content: "";
   position: absolute;
-  left: 6px;
-  right: 6px;
-  top: 3px;
-  height: 45%;
-  border-radius: 100px 100px 60px 60px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.05));
-  opacity: 0.8;
+  left: 8%;
+  right: 8%;
+  top: -40%;
+  height: 80%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  filter: blur(9px);
   pointer-events: none;
+  z-index: 0;
   transition: opacity 300ms ease;
-}
-
-/* flowing conic-gradient stroke — 2px ring, sweeps forever */
-.glassBtn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 2px;
-  background: conic-gradient(
-    from var(--sweep, 0deg),
-    #ff7ad9,
-    #8b5cf6,
-    #22d3ee,
-    #ffffff,
-    #ff7ad9
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  animation: strokeSweep var(--stroke-speed) linear infinite;
-  pointer-events: none;
-  opacity: 0.9;
-}
-
-@property --sweep {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-@keyframes strokeSweep {
-  to {
-    --sweep: 360deg;
-  }
 }
 
 .glassLabel {
@@ -162,17 +64,24 @@
   font-size: 1.02rem;
   font-weight: 650;
   letter-spacing: 0.01em;
-  text-shadow: 0 1px 6px rgba(2, 8, 24, 0.6);
+  text-shadow: 0 1px 5px rgba(20, 60, 140, 0.45);
   white-space: nowrap;
 }
 
 .glassBtn:hover {
   text-decoration: none;
-  filter: brightness(1.04);
+  transform: translateY(-3px) scale(1.03);
+  filter: brightness(1.05);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.38),
+    0 0 18px 3px rgba(255, 255, 255, 0.45),
+    0 18px 36px -12px rgba(15, 55, 135, 0.6),
+    inset 0 0 9px rgba(255, 255, 255, 0.55),
+    inset 0 -12px 20px -8px rgba(35, 95, 200, 0.45);
 }
 
-.glassBtn:hover::before {
-  opacity: 1;
+.glassBtn:active {
+  transform: translateY(-1px) scale(0.99);
 }
 
 .glassBtn:focus-visible {
@@ -180,26 +89,12 @@
   outline-offset: 3px;
 }
 
-.filters {
-  position: absolute;
-  width: 0;
-  height: 0;
-  overflow: hidden;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .stack,
   .glassBtn,
   .glassBtn::before {
     transition: none;
   }
-  .glassBtn::after {
-    animation: none;
-  }
-  .stack:hover {
+  .glassBtn:hover {
     transform: none;
-  }
-  .metalFallback {
-    animation: none;
   }
 }

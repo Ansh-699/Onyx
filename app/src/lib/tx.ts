@@ -33,12 +33,19 @@ const explorerTx = (sig: string) => `https://explorer.solana.com/tx/${sig}?clust
  * signature (e.g. /api/buy-usdc) — re-fetching a blockhash there would
  * invalidate the co-signer's signature.
  */
+/** broadcast→confirm time of the most recent successful send — the on-chain
+ *  execution latency, excluding wallet-approval wait and any follow-up I/O. */
+let lastExecMs: number | null = null;
+export const lastExecutionMs = () => lastExecMs;
+
 export async function broadcastAndConfirm(
   conn: Connection,
   raw: Buffer | Uint8Array,
   blockhash: string,
   lastValidBlockHeight: number,
 ): Promise<string> {
+  lastExecMs = null;
+  const tSend = performance.now();
   const sig = await conn.sendRawTransaction(raw, { skipPreflight: true });
   return await new Promise<string>((resolve, reject) => {
     let done = false;
@@ -48,13 +55,18 @@ export async function broadcastAndConfirm(
         fn();
       }
     };
+    const confirmed = () =>
+      finish(() => {
+        lastExecMs = Math.round(performance.now() - tSend);
+        resolve(sig);
+      });
     const txFailed = (err: unknown) =>
       finish(() => reject(new Error(`Transaction ${sig} failed: ${JSON.stringify(err)}`)));
 
     // Fast path. Rejections here are NOT authoritative (WS flake ≠ failure).
     conn
       .confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed")
-      .then((conf) => (conf.value.err ? txFailed(conf.value.err) : finish(() => resolve(sig))))
+      .then((conf) => (conf.value.err ? txFailed(conf.value.err) : confirmed()))
       .catch(() => {});
 
     // Authority path: status poll + re-broadcast + expiry + hard cap.
@@ -70,7 +82,7 @@ export async function broadcastAndConfirm(
           const st = (await conn.getSignatureStatuses([sig])).value[0];
           if (st?.err) return txFailed(st.err);
           if (st?.confirmationStatus === "confirmed" || st?.confirmationStatus === "finalized") {
-            return finish(() => resolve(sig));
+            return confirmed();
           }
           if (!st) {
             const height = await conn.getBlockHeight("confirmed");

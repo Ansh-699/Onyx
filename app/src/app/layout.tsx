@@ -7,7 +7,7 @@ import { NO_FLASH_SCRIPT } from "@/components/ThemeToggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ONYX — verifiable prediction markets on Solana",
+  title: "Onyx",
   description:
     "Sealed, MEV-proof World Cup prediction markets with trustless oracle settlement — every outcome independently verifiable on-chain. Solana devnet.",
 };
