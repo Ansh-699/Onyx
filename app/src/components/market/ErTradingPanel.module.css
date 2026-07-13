@@ -327,3 +327,58 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- aligned label→value stat block (quote breakdown, holdings) ---- */
+
+.statGrid {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.statGrid > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.statGrid dt {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.statGrid dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.toWinRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.toWinValue {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+  white-space: nowrap;
+}
+
+/* small right-gutter ghost buttons — one width so edges align */
+.miniBtn {
+  padding: 2px 12px;
+  font-size: 0.75rem;
+  min-width: 104px;
+}

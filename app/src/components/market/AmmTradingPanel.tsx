@@ -66,7 +66,7 @@ import { FundingModal } from "@/components/FundingModal";
 import { toast } from "@/components/Toaster";
 import { quoteBuy, quoteSell, spotPriceScaled, minOutForTolerance, buyImpactBps } from "@/lib/ammMath";
 import { WalletButton } from "@/components/WalletButton";
-import { fmtUsdc } from "@/components/market/format";
+import { fmtUsdc, fmtUsdc2 } from "@/components/market/format";
 import styles from "./ErTradingPanel.module.css";
 
 /** Whole test-USDC string -> 6dp base units, or null if invalid. */
@@ -500,15 +500,14 @@ export function AmmTradingPanel({
         </div>
       )}
 
-      {/* session status chip */}
+      {/* session status chip — the ONE place 1-click trading is mentioned */}
       {connected && session && tradingOpen && (
         <div className={styles.availRow} data-testid="amm-session-chip">
           <span>
             <span aria-hidden style={{ background: "var(--green)", display: "inline-block", width: 7, height: 7, borderRadius: "50%", marginRight: 6 }} />
-            1-click trading on · until {new Date(session.expiry * 1000).toLocaleTimeString()} · no approvals needed
-            {isDelegated ? "" : " once this market is flash-enabled"}
+            1-click on · expires {new Date(session.expiry * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           </span>
-          <button type="button" className="button" data-variant="ghost" style={{ padding: "2px 10px", fontSize: "0.75rem" }} onClick={onEndSession} disabled={!!busy}>
+          <button type="button" className={`button ${styles.miniBtn}`} data-variant="ghost" onClick={onEndSession} disabled={!!busy}>
             Turn off
           </button>
         </div>
@@ -516,25 +515,26 @@ export function AmmTradingPanel({
 
       {connected && position && tradingOpen && (
         <form onSubmit={onSwap} className={styles.form}>
-          <div className={styles.availRow} data-testid="amm-holdings">
-            <span>
-              You hold: <strong>{fmtUsdc(position.tokensA)} YES</strong> · <strong>{fmtUsdc(position.tokensB)} NO</strong>
-              {position.tokensA + position.tokensB > 0n && (
-                <> (≈{fmtUsdc((position.tokensA * priceA + position.tokensB * priceB) / 1_000_000n)} tUSDC at pool price)</>
-              )}{" "}
-              · {fmtUsdc(position.usdcAvailable)} tUSDC to spend
-            </span>
-            <button
-              type="button"
-              className="button"
-              data-variant="ghost"
-              style={{ padding: "2px 10px", fontSize: "0.75rem" }}
-              onClick={onDeposit}
-              disabled={!!busy}
-            >
-              + add funds
-            </button>
-          </div>
+          <dl className={styles.statGrid} data-testid="amm-holdings">
+            <div>
+              <dt>Holdings</dt>
+              <dd>
+                {fmtUsdc(position.tokensA)} YES · {fmtUsdc(position.tokensB)} NO
+                {position.tokensA + position.tokensB > 0n && (
+                  <span className="muted"> ≈{fmtUsdc2((position.tokensA * priceA + position.tokensB * priceB) / 1_000_000n)}</span>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>Balance</dt>
+              <dd style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                {fmtUsdc2(position.usdcAvailable)} tUSDC
+                <button type="button" className={`button ${styles.miniBtn}`} data-variant="ghost" onClick={onDeposit} disabled={!!busy}>
+                  + add funds
+                </button>
+              </dd>
+            </div>
+          </dl>
 
           <div className={styles.fields}>
             <label className={styles.field}>
@@ -549,43 +549,56 @@ export function AmmTradingPanel({
               <input value={amountStr} onChange={(e) => setAmountStr(e.target.value)} inputMode="decimal" placeholder="0.5" data-testid="amm-amount" />
             </label>
           </div>
-          {/* slippage stays visible — it's enforced on-chain (min_out → SlippageExceeded), and a judge should SEE that rail, not find it behind a disclosure */}
           <label className={styles.field} style={{ maxWidth: 220 }}>
-            <span className={styles.fieldLabel} title="Encoded into every swap as min_out; the program reverts rather than fill worse. On-chain enforcement, not a UI promise.">
-              Max slippage (%) · enforced on-chain
+            {/* enforcement detail lives in the ⓘ tooltip — still on-chain (min_out → SlippageExceeded) */}
+            <span className={styles.fieldLabel}>
+              Max slippage %{" "}
+              <span title="Encoded into every swap as min_out; the program reverts rather than fill worse. On-chain enforcement, not a UI promise." style={{ cursor: "help" }}>
+                ⓘ
+              </span>
             </span>
             <input value={tolStr} onChange={(e) => setTolStr(e.target.value)} inputMode="decimal" placeholder="1.0" data-testid="amm-tolerance" />
           </label>
 
           {quote && (
-            <div className={styles.availRow} data-testid="amm-quote">
-              <span>
-                {direction === SWAP_BUY ? (
-                  <>
-                    ≈ <strong>{fmtUsdc(quote.out)}</strong> {side === SIDE_A ? "YES" : "NO"} shares
-                    {quote.impactBps > 0 && ` · impact ${(quote.impactBps / 100).toFixed(2)}%`}
-                  </>
-                ) : (
-                  <>
-                    ≈ <strong>{fmtUsdc(quote.out)}</strong> tUSDC back
-                  </>
-                )}{" "}
-                · fee {fmtUsdc(quote.fee)}
-              </span>
-              <span title="Encoded into the transaction as min_out — the program reverts with SlippageExceeded if the fill would be worse. On-chain enforcement, not a UI promise.">
-                min received: <strong data-testid="amm-minout">{fmtUsdc(quote.minOut)}</strong>
-              </span>
-            </div>
+            <dl className={styles.statGrid} data-testid="amm-quote">
+              <div>
+                <dt>{direction === SWAP_BUY ? "Est. shares" : "Est. tUSDC back"}</dt>
+                <dd>
+                  {fmtUsdc2(quote.out)}
+                  {direction === SWAP_BUY && ` ${side === SIDE_A ? "YES" : "NO"}`}
+                </dd>
+              </div>
+              {direction === SWAP_BUY && quote.impactBps > 0 && (
+                <div>
+                  <dt>Price impact</dt>
+                  <dd>{(quote.impactBps / 100).toFixed(2)}%</dd>
+                </div>
+              )}
+              <div>
+                <dt>Fee</dt>
+                <dd>{fmtUsdc2(quote.fee)}</dd>
+              </div>
+              <div>
+                <dt title="Encoded into the transaction as min_out — the program reverts with SlippageExceeded if the fill would be worse. On-chain enforcement, not a UI promise.">
+                  Min received ⓘ
+                </dt>
+                <dd data-testid="amm-minout">{fmtUsdc2(quote.minOut)}</dd>
+              </div>
+            </dl>
           )}
           {quote && direction === SWAP_BUY && amountIn && (
-            <div className={styles.availRow} data-testid="amm-towin" title="Winning shares redeem 1:1 for tUSDC at settlement — this is your payout if this side wins, and the profit over what you're spending now. If the other side wins, these shares pay 0.">
-              <span>
-                To win: <strong style={{ color: "var(--green)" }}>≈{fmtUsdc(quote.out)} tUSDC</strong>
-                {quote.out > amountIn && <> (+{fmtUsdc(quote.out - amountIn)} profit)</>}
-              </span>
-              <span className="muted" style={{ fontSize: "0.72rem" }}>
-                if {side === SIDE_A ? "YES" : "NO"} wins · shares redeem 1:1
-              </span>
+            <div data-testid="amm-towin" title="Winning shares redeem 1:1 for tUSDC at settlement — this is your payout if this side wins, and the profit over what you're spending now. If the other side wins, these shares pay 0.">
+              <div className={styles.toWinRow}>
+                <span>To win</span>
+                <span className={styles.toWinValue}>
+                  {fmtUsdc2(quote.out)} tUSDC
+                  {quote.out > amountIn && ` · +${fmtUsdc2(quote.out - amountIn)}`}
+                </span>
+              </div>
+              <div className="muted" style={{ fontSize: "0.72rem", textAlign: "right", marginTop: 2 }}>
+                if {side === SIDE_A ? "YES" : "NO"} wins · redeems 1:1
+              </div>
             </div>
           )}
 
@@ -707,14 +720,17 @@ export function AmmTradingPanel({
         </div>
       )}
 
-      {log.length > 0 && (
+      {log.some((e) => e.ms > 0) && (
         <ul className={styles.latencyLog}>
-          {log.map((entry, i) => (
-            <li key={i}>
-              <span>{entry.label}</span>
-              <span className={styles.latencyMs}>{entry.ms}ms</span>
-            </li>
-          ))}
+          {/* ms===0 entries (session-enable bookkeeping) are links below, not latency rows */}
+          {log
+            .filter((e) => e.ms > 0)
+            .map((entry, i) => (
+              <li key={i}>
+                <span>{entry.label}</span>
+                <span className={styles.latencyMs}>{entry.ms}ms</span>
+              </li>
+            ))}
         </ul>
       )}
 
@@ -725,19 +741,24 @@ export function AmmTradingPanel({
             href={explorerTxUrlFor(log[0].sig, log[0].rpc ?? null)}
             target="_blank"
             rel="noreferrer"
-            title={log[0].rpc ? "Executed on the Ephemeral Rollup — explorer opens pointed at the ER's RPC" : "Executed on base devnet"}
+            title={`${log[0].label} — ${log[0].rpc ? "executed on the Ephemeral Rollup; explorer opens pointed at the ER's RPC" : "executed on base devnet"}`}
           >
-            last tx ({log[0].label}) {log[0].rpc ? "· ER " : ""}↗
+            last tx ↗
           </a>
         </p>
       )}
 
-      <p className={styles.blurb} style={{ marginTop: 12, fontSize: "0.78rem" }}>
-        <strong>Honesty note:</strong> AMM markets are continuously priced and front-runnable in principle, like
-        any AMM — transaction ordering belongs to the sequencer. Your slippage tolerance is enforced on-chain
-        (the swap reverts rather than fill worse than your min), but it is not MEV-proofing. For MEV-proof
-        execution, use a <strong>sealed-batch market</strong> — uniform clearing price, no ordering advantage.
-      </p>
+      <details className={styles.blurb} style={{ marginTop: 12, fontSize: "0.78rem" }}>
+        <summary className="muted" style={{ cursor: "pointer" }}>
+          ⓘ Honesty note
+        </summary>
+        <p style={{ marginTop: 6, marginBottom: 0 }}>
+          AMM markets are continuously priced and front-runnable in principle, like any AMM — transaction
+          ordering belongs to the sequencer. Your slippage tolerance is enforced on-chain (the swap reverts
+          rather than fill worse than your min), but it is not MEV-proofing. For MEV-proof execution, use a{" "}
+          <strong>sealed-batch market</strong> — uniform clearing price, no ordering advantage.
+        </p>
+      </details>
       <FundingModal open={fundingOpen} onClose={() => setFundingOpen(false)} />
     </div>
   );

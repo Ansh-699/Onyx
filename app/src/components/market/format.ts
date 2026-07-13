@@ -14,6 +14,12 @@ export function fmtUsdc(baseUnits: bigint): string {
   });
 }
 
+/** Fixed 2dp variant for aligned stat columns (1_100_000n -> "1.10"). */
+export function fmtUsdc2(baseUnits: bigint): string {
+  const n = Number(baseUnits) / USDC_BASE;
+  return Number.isFinite(n) ? n.toFixed(2) : baseUnits.toString();
+}
+
 export function shortAddr(addr: string): string {
   if (addr.length <= 10) return addr;
   return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
