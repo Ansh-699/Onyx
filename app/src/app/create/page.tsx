@@ -11,6 +11,7 @@ import { SELECTABLE_STAT_OPTIONS, pairedStatKey, OP_ADD, OP_SUBTRACT } from "@/l
 import { listUpcomingRealFixtures, getFixtureStartTimeMs } from "@/lib/fixtureMeta";
 import { useLiveFixtures } from "@/lib/hooks";
 import { friendlyError } from "@/lib/errors";
+import { sendViaWallet } from "@/lib/tx";
 import {
   buildOpenMarketSealedIx,
   buildOpenMarketIx,
@@ -66,7 +67,7 @@ type Phase = "idle" | "submitting" | "done" | "error";
 export default function CreatePage() {
   const router = useRouter();
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
 
   const [marketType, setMarketType] = useState<"sealed" | "amm">("amm");
   // Default to the first genuinely-upcoming fixture — NOT the demo fixture:
@@ -214,12 +215,8 @@ export default function CreatePage() {
         tx.add(opened.ix, pooled.ix);
       }
 
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = publicKey;
-
-      const signature = await sendTransaction(tx, connection);
-      await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+      if (!signTransaction) throw new Error("This wallet can't sign transactions — reconnect and try again.");
+      const signature = await sendViaWallet(connection, tx, publicKey, signTransaction);
 
       setResult({ signature, market: market.toBase58() });
       setPhase("done");
