@@ -21,3 +21,8 @@ app/.data/
 vendor/
 # fixtures may contain large captured payloads; keep curated ones only
 fixtures/tmp/
+
+# transitions.dev Refine tooling (local dev aid, never committed)
+app/.agents/
+.refine-relay.json
+app/.refine-relay.json

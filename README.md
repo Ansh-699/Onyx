@@ -3,6 +3,9 @@
 **Polymarket-style continuous trading on a MagicBlock Ephemeral Rollup,
 with trustless settlement on Solana built directly on TxODDS's TxLINE.**
 
+**Live demo: [onyx.ansht.tech](https://onyx.ansht.tech)** · Solana devnet ·
+program `4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB`
+
 Two market types, one settlement truth. **AMM markets**: buy *and sell*
 outcome tokens at any moment — the pool is the counterparty, seeded with
 real capital, swaps confirm in ~1s on an Ephemeral Rollup with slippage
@@ -449,8 +452,8 @@ iteration to get right:
   Delegation Program. The UI warns before classic orders are placed on a
   delegated market and routes to the working recovery: `refund_unrevealed`
   ("Reclaim") returns the locked collateral once the reveal window closes.
-  Known limitation, documented in OPEN_QUESTIONS.md — not an undiscovered
-  bug, and no funds are stranded.
+  Known limitation — documented, not an undiscovered bug, and no funds
+  are stranded.
 - **The AMM expiry-refund path is mollusk-proven, not live-proven.** If an
   AMM market never settles (fixture never gets oracle data), `redeem_amm` /
   `withdraw_lp_amm` open a refund path after `deadline + 2h grace`:
@@ -512,15 +515,14 @@ iteration to get right:
   independent attempt to re-derive TxLINE's stat-leaf hash client-side (for
   an extra, purely illustrative verification layer) didn't match the
   on-chain root after ~15 encoding variants tried; the exact byte layout is
-  an open question logged in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)
-  (O2) rather than silently faked or hidden. The receipt page badges this
+  an open question documented here rather than silently faked or hidden. The receipt page badges this
   section "experimental — independent of the settlement verdict above" so
   it can't be misread as a failed settlement.
 - **MagicBlock Ephemeral Rollup (ER) trading is shipped and is the default
   flow — an earlier draft of this README said otherwise; that was true of
   an early de-risk spike and is no longer true of this build.** Delegate →
   execute-on-ER → commit-to-L1 started as a deliberate de-risk spike
-  ([`BUILD_STATE.md`](BUILD_STATE.md)) and was then built for real: a new
+  ([`docs/BUILD_STATE.md`](docs/BUILD_STATE.md)) and was then built for real: a new
   `TradingAccount` type, 9 new program instructions, phase-based RPC
   routing in the frontend, and the `ErTradingPanel` UI that leads every
   market page. Nothing about ER changes the trust model in Part 1/2 above —
@@ -531,16 +533,14 @@ iteration to get right:
 - **The separate MagicBlock TEE/PER track is real but still deliberately
   held back from the product — this part of the earlier claim stands.** A
   live, DCAP-verified TEE attestation was proven end-to-end on devnet
-  ([`BUILD_STATE.md`](BUILD_STATE.md)) as its own de-risk spike, distinct
+  ([`docs/BUILD_STATE.md`](docs/BUILD_STATE.md)) as its own de-risk spike, distinct
   from the ER work above. Moving any part of *matching* into a TEE
   reintroduces a hardware/operator trust dependency that this project's
   core pitch argues against, so it's kept as roadmap/interview material,
   not shipped code — unlike ER, this one hasn't changed.
   Confidential-USDC via MagicBlock's Private Payments product was
-  separately evaluated and rejected outright —
-  [`PRIVATE_PAYMENTS_CUSTODY_ANALYSIS.md`](PRIVATE_PAYMENTS_CUSTODY_ANALYSIS.md)
-  has the full reasoning (it would move fund-routing decisions outside
-  on-chain verifiability).
+  separately evaluated and rejected outright — it would move fund-routing
+  decisions outside on-chain verifiability.
 - **This is a hackathon build, not a compliance-reviewed money-services
   product.** No real funds, no jurisdiction/KYC handling. Framed as
   verifiable settlement infrastructure, not a live betting product.
@@ -663,14 +663,17 @@ app/                     Next.js frontend — lobby, create, market, receipt, po
   src/lib/txlineFixtures.ts       live /fixtures/snapshot window (+/api/fixtures)
 services/ingestion/      TxLINE auth/data client + devnet test harnesses
 scripts/run-demo.sh      one-command sealed demo (`bun run demo`)
-BUILD_STATE.md           full build/proof log, chronological
-OPEN_QUESTIONS.md        everything still open, and why it doesn't block
-PRIVATE_PAYMENTS_CUSTODY_ANALYSIS.md   why confidential-USDC was rejected
+docs/BUILD_STATE.md      full build/proof log, chronological
+docs/DEPLOYMENT.md       production deployment (onyx.ansht.tech) runbook
+docs/AMM_TRADING_DESIGN.md    AMM design (shipped, phases A–E)
+docs/ER_TRADING_DESIGN.md     ER trading design notes
+docs/SESSION_TRADING.md       MagicBlock session-key trading design
+SECURITY_AUDIT.md        read-only review of every instruction handler
 ```
 
 The byte-level program spec ("ONYX — Implementation & Interface
 Specification") lives in the working notes outside this repo — available on
-request; [`BUILD_STATE.md`](BUILD_STATE.md) records every implemented
+request; [`docs/BUILD_STATE.md`](docs/BUILD_STATE.md) records every implemented
 instruction and its discriminator in the meantime.
 
 ---
@@ -686,7 +689,7 @@ instruction and its discriminator in the meantime.
 | Functional build / live testnet application | ✅ Deployed devnet program `4LpMzq6...`, live app, real tx signatures above — sell-anytime AMM markets, the sealed-order flow, and the ER-fast flow |
 | TxLINE data as a primary input | ✅ Live SSE stream drives the lobby/market views; settlement fetches live `validate_stat` proofs from TxLINE for any fixture (bundled fallback for the demo fixture) — both surfaces, not just one |
 | Devnet acceptable | ✅ Per the track's own guidance ("devnet is safer/faster for a hackathon... either is allowed") |
-| README + repo | ✅ This file; **repo is on GitHub but currently private — make it public (or grant judge access) before submitting** |
+| README + repo | ✅ This file; repo is public at github.com/Ansh-699/Onyx |
 | Demo video (≤5 min, "evaluated heavily") | ⬜ Not recorded — yours to do; suggested arc: create an AMM market on /create (one signature, real seed) → buy → **sell** (the sell-anytime headline) → show the slippage-protection quote → settle → redeem. `bun run demo` (sealed) and `bun run demo:amm` / `demo:amm-er` (AMM, incl. the ER concurrency + replay audit) are scriptable takes that can't flake mid-recording |
 | API-feedback answer | ⬜ Mentioned as a day-11 deliverable in the original planning notes — not written this session; confirm whether the current Superteam Earn submission form still asks for it |
 | Settlement currency requirement | No explicit USDC/USDT requirement found in the track rules I could check — ONYX uses a devnet SPL token standing in for USDC (see "no bluff" section) |

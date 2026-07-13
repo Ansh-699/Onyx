@@ -273,7 +273,7 @@ export default async function LandingPage() {
               <a href="https://github.com/Ansh-699/Onyx/blob/master/SECURITY_AUDIT.md" target="_blank" rel="noopener noreferrer">
                 Security audit
               </a>
-              <a href="https://github.com/Ansh-699/Onyx/blob/master/BUILD_STATE.md" target="_blank" rel="noopener noreferrer">
+              <a href="https://github.com/Ansh-699/Onyx/blob/master/docs/BUILD_STATE.md" target="_blank" rel="noopener noreferrer">
                 Build log
               </a>
             </div>

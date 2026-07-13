@@ -1,0 +1,31 @@
+# Auto-deploy to the DigitalOcean droplet (onyx.ansht.tech) after ci
+# passes on master. The droplet runs deploy/deploy.sh: fetch, install,
+# build, pm2 reload. One secret required: DO_SSH_PRIVATE_KEY (private key
+# matching an entry in the droplet root's authorized_keys).
+
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [master]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Deploy over ssh
+        env:
+          SSH_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 134.209.149.89 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key root@134.209.149.89 'bash /opt/onyx/deploy/deploy.sh'

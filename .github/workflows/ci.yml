@@ -40,6 +40,13 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install
         run: bun install --frozen-lockfile
+      # next-env.d.ts is gitignored (Next convention) but declares the
+      # *.png/*.jpg module types via next/image-types/global — without it
+      # tsc fails TS2307 on every image import. Regenerate the references.
+      - name: Restore next-env.d.ts
+        working-directory: app
+        run: |
+          printf '/// <reference types="next" />\n/// <reference types="next/image-types/global" />\n' > next-env.d.ts
       - name: Typecheck
         working-directory: app
         run: bunx tsc --noEmit
