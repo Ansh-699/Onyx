@@ -129,14 +129,15 @@ function MarketsScreen({ preview }: { preview: PreviewMarket[] }) {
 /** P/L chart for the portfolio screen — seeded upward walk, green line. */
 function PlChart() {
   const rnd = seededRng("onyx-pl");
-  const W = 470;
-  const H = 148;
-  let v = 108;
+  // viewBox ≈ rendered size so strokes/dots keep their aspect
+  const W = 730;
+  const H = 190;
+  let v = 145;
   const pts: [number, number][] = [];
   for (let i = 0; i < 40; i++) {
-    v += (rnd() - 0.62) * 14;
-    v = Math.min(132, Math.max(28, v));
-    pts.push([12 + (i / 39) * (W - 24), i === 39 ? 30 : v]);
+    v += (rnd() - 0.62) * 18;
+    v = Math.min(172, Math.max(36, v));
+    pts.push([12 + (i / 39) * (W - 24), i === 39 ? 40 : v]);
   }
   const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const last = pts[pts.length - 1]!;
