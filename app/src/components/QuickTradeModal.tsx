@@ -21,6 +21,7 @@ import { ammPoolPda, ammPositionPda, SIDE_A, SWAP_BUY } from "@/lib/instructions
 import { friendlyError } from "@/lib/errors";
 import { WalletButton } from "./WalletButton";
 import { Modal } from "./Modal";
+import { toast } from "./Toaster";
 import { FundingModal } from "./FundingModal";
 import styles from "./QuickTradeModal.module.css";
 
@@ -142,9 +143,11 @@ export function QuickTradeModal({ target, onClose }: { target: QuickTradeTarget 
         sig,
         rpc: swapRoute.isDelegated ? swapRoute.connection.rpcEndpoint : null,
       });
+      toast("success", `Bought ≈${fmt(quote.out)} ${target.side === SIDE_A ? "YES" : "NO"} for ${fmt(amountIn)} USDC`);
       await queryClient.invalidateQueries();
     } catch (err) {
       setError(friendlyError(err));
+      toast("error", "Trade failed", friendlyError(err));
     } finally {
       setBusy(null);
     }

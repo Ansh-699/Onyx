@@ -50,6 +50,7 @@ import { invalidateDelegationStatus } from "@/lib/erRouting";
 import { useTradingAccount, useTradingAccountsForMarket } from "@/lib/hooks";
 import { friendlyError, classifyWrongLedger } from "@/lib/errors";
 import { sendViaWallet, lastExecutionMs } from "@/lib/tx";
+import { toast } from "@/components/Toaster";
 import {
   buildDelegateMarketIx,
   buildOpenTradingAccountIx,
@@ -194,6 +195,7 @@ export function ErTradingPanel({
     const ms = lastExecutionMs() ?? Math.round(performance.now() - t0);
     if (typeof result === "string") {
       setLog((prev) => [{ label, sig: result, ms }, ...prev].slice(0, 8));
+      toast("success", label, `confirmed in ${ms}ms`);
     }
     return result;
   }
@@ -220,7 +222,9 @@ export function ErTradingPanel({
       await refreshAll();
     } catch (err) {
       const ledgerHint = classifyWrongLedger(err);
-      setError(ledgerHint ?? friendlyError(err));
+      const msg = ledgerHint ?? friendlyError(err);
+      setError(msg);
+      toast("error", "Transaction failed", msg);
       if (ledgerHint) await refreshAll();
     } finally {
       setBusy(null);

@@ -58,14 +58,20 @@ export function Nav() {
       </nav>
       <div className={styles.wallet}>
         <ThemeToggle />
-        {connected && (
-          <button type="button" className="button" data-variant="ghost" onClick={() => setVaultOpen(true)} data-testid="nav-vault">
-            Vault
-            <span className={styles.balanceChip}>
-              ${usdc.data === undefined ? "…" : usdc.data.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-            </span>
-          </button>
-        )}
+        {connected &&
+          (usdc.data === 0 ? (
+            // empty wallet: one clear call-to-action instead of "Vault $0"
+            <button type="button" className={styles.depositNav} onClick={() => setFaucetOpen(true)} data-testid="nav-deposit">
+              Deposit
+            </button>
+          ) : (
+            <button type="button" className="button" data-variant="ghost" onClick={() => setVaultOpen(true)} data-testid="nav-vault">
+              Vault
+              <span className={styles.balanceChip}>
+                ${usdc.data === undefined ? "…" : usdc.data.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+            </button>
+          ))}
         <WalletButton />
       </div>
       <VaultPanel open={vaultOpen} onClose={() => setVaultOpen(false)} />

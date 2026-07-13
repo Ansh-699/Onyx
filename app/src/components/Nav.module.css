@@ -150,3 +150,35 @@
     display: none;
   }
 }
+
+/* empty-wallet call-to-action (replaces "Vault $0") — bold white pill */
+.depositNav {
+  padding: 9px 22px;
+  border: none;
+  border-radius: 12px;
+  background: #fff;
+  color: #10131a;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px -6px rgba(0, 0, 0, 0.5);
+  transition: filter 140ms ease, transform 140ms ease;
+}
+
+.depositNav:hover {
+  filter: brightness(0.93);
+  transform: translateY(-1px);
+}
+
+:global([data-theme="light"]) .depositNav {
+  background: #10131a;
+  color: #fff;
+}
+
+@media (prefers-color-scheme: light) {
+  :global(:root:not([data-theme])) .depositNav {
+    background: #10131a;
+    color: #fff;
+  }
+}

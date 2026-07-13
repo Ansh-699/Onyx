@@ -418,7 +418,23 @@ function SkeletonCard() {
 /** Protocol totals strip — all live on-chain aggregates from /api/stats. */
 function StatsStrip() {
   const { data } = useProtocolStats();
-  if (!data) return null;
+  // Loading placeholder with the SAME box metrics — popping in after load
+  // shifted the whole grid down (reported as janky).
+  if (!data) {
+    return (
+      <div className={styles.statsStrip} aria-hidden>
+        {["volume", "open interest", "traders", "settled"].map((label) => (
+          <span key={label}>
+            <strong className="skeleton" style={{ display: "inline-block", width: 42, borderRadius: 6 }}>
+              &nbsp;
+            </strong>{" "}
+            {label}
+          </span>
+        ))}
+        <span className={styles.statsNote}>live from devnet · seeded market-making disclosed</span>
+      </div>
+    );
+  }
   const fmt = (raw: string) => formatVolume(Number(BigInt(raw)) / 1e6);
   return (
     <div

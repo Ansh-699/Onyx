@@ -63,6 +63,7 @@ import {
   SWAP_SELL,
 } from "@/lib/instructions";
 import { FundingModal } from "@/components/FundingModal";
+import { toast } from "@/components/Toaster";
 import { quoteBuy, quoteSell, spotPriceScaled, minOutForTolerance, buyImpactBps } from "@/lib/ammMath";
 import { WalletButton } from "@/components/WalletButton";
 import { fmtUsdc } from "@/components/market/format";
@@ -178,7 +179,10 @@ export function AmmTradingPanel({
     // broadcast→confirm time of the tx itself, not the whole flow (which
     // includes the wallet-approval wait and follow-up I/O)
     const ms = lastExecutionMs() ?? Math.round(performance.now() - t0);
-    if (typeof result === "string") setLog((prev) => [{ label, sig: result, ms, rpc }, ...prev].slice(0, 8));
+    if (typeof result === "string") {
+      setLog((prev) => [{ label, sig: result, ms, rpc }, ...prev].slice(0, 8));
+      toast("success", label, `confirmed in ${ms}ms`);
+    }
     return result;
   }
 
@@ -213,7 +217,9 @@ export function AmmTradingPanel({
       refreshAll();
     } catch (err) {
       const ledgerHint = classifyWrongLedger(err);
-      setError(ledgerHint ?? friendlyError(err));
+      const msg = ledgerHint ?? friendlyError(err);
+      setError(msg);
+      toast("error", "Transaction failed", msg);
       if (ledgerHint) refreshAll();
     } finally {
       setBusy(null);
@@ -583,22 +589,30 @@ export function AmmTradingPanel({
             </div>
           )}
 
-          <button className="glass-action" type="submit" disabled={!!busy || !quote || insufficient} data-testid="amm-swap-btn">
-            {busy ? (
-              <>
-                <span className={styles.spinner} aria-hidden /> {direction === SWAP_BUY ? "Buying…" : "Selling…"}
-              </>
-            ) : insufficient ? (
-              "Insufficient balance"
-            ) : (
-              `${direction === SWAP_BUY ? "Buy" : "Sell"} ${side === SIDE_A ? "Yes" : "No"}${isDelegated ? " · instant" : ""}`
-            )}
-          </button>
+          {insufficient && direction === SWAP_BUY && !busy ? (
+            // Not a dead end: wallet funds ≠ market funds (per-market escrow),
+            // so offer the one action that unblocks the buy.
+            <button className="glass-action" type="button" onClick={onDeposit} data-testid="amm-swap-btn">
+              ＋ Add funds to trade ({fmtUsdc(held)} tUSDC left in market)
+            </button>
+          ) : (
+            <button className="glass-action" type="submit" disabled={!!busy || !quote || insufficient} data-testid="amm-swap-btn">
+              {busy ? (
+                <>
+                  <span className={styles.spinner} aria-hidden /> {direction === SWAP_BUY ? "Buying…" : "Selling…"}
+                </>
+              ) : insufficient ? (
+                "Not enough tokens"
+              ) : (
+                `${direction === SWAP_BUY ? "Buy" : "Sell"} ${side === SIDE_A ? "Yes" : "No"}${isDelegated ? " · instant" : ""}`
+              )}
+            </button>
+          )}
           {busy && <p className={`muted ${styles.blurb}`}>{busy}</p>}
           {!busy && insufficient && (
             <p className={`muted ${styles.blurb}`}>
               {direction === SWAP_BUY
-                ? "You've spent everything you added to this market — press “+ add funds” above (one approval)."
+                ? "Your wallet balance isn't spendable here until it's added to this market's escrow — the button above does that in one approval."
                 : "You don't hold that many tokens — check “You hold” above."}{" "}
               <button type="button" className="button" data-variant="ghost" style={{ padding: "1px 8px", fontSize: "0.72rem" }} onClick={() => setFundingOpen(true)}>
                 need more USDC?
