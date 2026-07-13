@@ -38,6 +38,7 @@ import {
 import { buildClaimIx } from "@/lib/instructions";
 import { spotPriceScaled } from "@/lib/ammMath";
 import { friendlyError } from "@/lib/errors";
+import { sendViaWallet } from "@/lib/tx";
 import { describeMarketPredicate } from "@/lib/statKeys";
 import { getFixtureInfo, fixtureDisplayName, primeLiveFixtures } from "@/lib/fixtureMeta";
 import { useLiveFixtures, useAmmPoolMarkets } from "@/lib/hooks";
@@ -117,7 +118,7 @@ export default function PortfolioPage() {
   useEffect(() => setMounted(true), []);
 
   const { connection } = useConnection();
-  const { publicKey, connected, sendTransaction } = useWallet();
+  const { publicKey, connected, signTransaction } = useWallet();
   const queryClient = useQueryClient();
 
   const owner = publicKey?.toBase58() ?? null;
@@ -250,12 +251,9 @@ export default function PortfolioPage() {
         market: new PublicKey(row.position.market),
         usdcMint,
       });
+      if (!signTransaction) throw new Error("This wallet can't sign transactions — reconnect and try again.");
       const tx = new Transaction().add(ix);
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = publicKey;
-      const sig = await sendTransaction(tx, connection);
-      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+      const sig = await sendViaWallet(connection, tx, publicKey, signTransaction);
       setClaimSig(sig);
       await queryClient.invalidateQueries({ queryKey: ["positions", owner] });
       await queryClient.invalidateQueries({ queryKey: ["myOrders", owner] });

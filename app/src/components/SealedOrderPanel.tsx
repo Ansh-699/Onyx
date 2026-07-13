@@ -32,6 +32,7 @@ import {
 } from "@/lib/onchain";
 import { useSealedOrders } from "@/lib/hooks";
 import { friendlyError } from "@/lib/errors";
+import { sendViaWallet } from "@/lib/tx";
 import {
   buildSubmitSealedOrderIx,
   buildRevealOrderIx,
@@ -68,7 +69,7 @@ const ORDER_TONES: Record<number, string> = {
 export function SealedOrderPanel({ market }: { market: OnChainMarket }) {
   const queryClient = useQueryClient();
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
 
   const ordersQuery = useSealedOrders(market.pda);
   const orders = useMemo(() => ordersQuery.data ?? [], [ordersQuery.data]);
@@ -171,13 +172,8 @@ export function SealedOrderPanel({ market }: { market: OnChainMarket }) {
   const canReclaim = nowSec >= revealEnd; // exact on-chain gate in refund_unrevealed.rs
 
   async function sendAndConfirm(tx: Transaction): Promise<string> {
-    if (!publicKey) throw new Error("wallet not connected");
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-    tx.recentBlockhash = blockhash;
-    tx.feePayer = publicKey;
-    const sig = await sendTransaction(tx, connection);
-    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
-    return sig;
+    if (!publicKey || !signTransaction) throw new Error("wallet not connected");
+    return sendViaWallet(connection, tx, publicKey, signTransaction);
   }
 
   async function placeBet(e: React.FormEvent) {

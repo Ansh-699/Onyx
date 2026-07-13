@@ -18,6 +18,7 @@ import {
 import { buildSettleMarketIx, buildClaimIx, OP_NONE, type CapturedProofFixture } from "@/lib/instructions";
 import capturedProof from "@/lib/fixtures/scores-validation.sample.json";
 import { friendlyError } from "@/lib/errors";
+import { sendViaWallet } from "@/lib/tx";
 import { WalletButton } from "@/components/WalletButton";
 import styles from "@/components/market/TradePanel.module.css";
 
@@ -43,7 +44,7 @@ interface LiveProofResult {
 export function SettleClaimPanel({ market, isAmm = false }: { market: OnChainMarket; isAmm?: boolean }) {
   const queryClient = useQueryClient();
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastSig, setLastSig] = useState<string | null>(null);
@@ -107,12 +108,9 @@ export function SettleClaimPanel({ market, isAmm = false }: { market: OnChainMar
         predicate: market.predicate,
         op,
       });
+      if (!signTransaction) throw new Error("This wallet can't sign transactions — reconnect and try again.");
       const tx = new Transaction().add(computeIx, ix);
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = publicKey;
-      const sig = await sendTransaction(tx, connection);
-      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+      const sig = await sendViaWallet(connection, tx, publicKey, signTransaction);
       setLastSig(sig);
       await queryClient.invalidateQueries({ queryKey: ["market", market.pda] });
       await queryClient.invalidateQueries({ queryKey: ["markets"] });
@@ -131,13 +129,10 @@ export function SettleClaimPanel({ market, isAmm = false }: { market: OnChainMar
       const usdcMint = await getConfigUsdcMint();
       if (!usdcMint) throw new Error("config not initialized");
       const marketPk = new PublicKey(market.pda);
+      if (!signTransaction) throw new Error("This wallet can't sign transactions — reconnect and try again.");
       const ix = buildClaimIx({ winner: publicKey, market: marketPk, usdcMint });
       const tx = new Transaction().add(ix);
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = publicKey;
-      const sig = await sendTransaction(tx, connection);
-      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+      const sig = await sendViaWallet(connection, tx, publicKey, signTransaction);
       setLastSig(sig);
       await queryClient.invalidateQueries({ queryKey: ["market", market.pda] });
       await queryClient.invalidateQueries({ queryKey: ["markets"] });
