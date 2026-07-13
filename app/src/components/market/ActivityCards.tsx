@@ -42,6 +42,8 @@ export function PriceHistoryCard({ marketPda }: { marketPda: string }) {
         <div className="skeleton" style={{ height: 14, width: 180 }} />
         <div className="skeleton" style={{ height: 34, width: 90, marginTop: 8 }} />
         <div className="skeleton" style={{ height: 150, marginTop: 12 }} />
+        <div className="skeleton" style={{ height: 14, width: "85%", marginTop: 12 }} />
+        <div className="skeleton" style={{ height: 14, width: "55%", marginTop: 6 }} />
       </div>
     );
   }
@@ -99,12 +101,15 @@ export function RecentTradesCard({ marketPda }: { marketPda: string }) {
   const txRpc = routed.isDelegated ? routed.connection.rpcEndpoint : null;
   const trades = data?.[marketPda]?.trades ?? [];
   if (isPending) {
+    // 10 rows ≈ the loaded card's usual 12-row height — the old 4-row
+    // placeholder grew ~260px on load and shoved everything below it down
     return (
       <div className={`card ${styles.wrap}`} aria-hidden>
         <div className="skeleton" style={{ height: 14, width: 240 }} />
-        {[0, 1, 2, 3].map((i) => (
+        {Array.from({ length: 10 }).map((_, i) => (
           <div key={i} className="skeleton" style={{ height: 22, marginTop: 10 }} />
         ))}
+        <div className="skeleton" style={{ height: 14, width: "75%", marginTop: 12 }} />
       </div>
     );
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Transaction } from "@solana/web3.js";
@@ -8,7 +8,7 @@ import type { Comparison } from "@/lib/types";
 import { comparisonSymbol } from "@/lib/merkle";
 import { getConfigUsdcMint, explorerTxUrl, explorerAddressUrl } from "@/lib/onchain";
 import { SELECTABLE_STAT_OPTIONS, pairedStatKey, OP_ADD, OP_SUBTRACT } from "@/lib/statKeys";
-import { listUpcomingRealFixtures } from "@/lib/fixtureMeta";
+import { listUpcomingRealFixtures, getFixtureStartTimeMs } from "@/lib/fixtureMeta";
 import { useLiveFixtures } from "@/lib/hooks";
 import { friendlyError } from "@/lib/errors";
 import {
@@ -69,7 +69,15 @@ export default function CreatePage() {
   const { publicKey, sendTransaction, connected } = useWallet();
 
   const [marketType, setMarketType] = useState<"sealed" | "amm">("amm");
-  const [fixtureId, setFixtureId] = useState<number>(DEMO_FIXTURE.fixtureId);
+  // Default to the first genuinely-upcoming fixture — NOT the demo fixture:
+  // its match already ended, and a market on a finished event is betting on
+  // a known result.
+  const [fixtureId, setFixtureId] = useState<number>(
+    () =>
+      STATIC_UPCOMING.find((f) => f.startTimeMs === null || f.startTimeMs > Date.now())?.fixtureId ??
+      STATIC_UPCOMING[0]?.fixtureId ??
+      0,
+  );
   const [statKey, setStatKey] = useState<number>(DEMO_FIXTURE.statKey);
   const [combined, setCombined] = useState(false);
   const [combineOp, setCombineOp] = useState<"add" | "subtract">("add");
@@ -90,9 +98,22 @@ export default function CreatePage() {
   // only — a market on an already-finished fixture would settle instantly.
   const liveFixtures = useLiveFixtures();
   const upcomingFixtures = (
-    liveFixtures.data?.filter((f) => f.fixtureId !== DEMO_FIXTURE.fixtureId && (f.startTimeMs === null || f.startTimeMs > Date.now())) ??
-    STATIC_UPCOMING
-  );
+    liveFixtures.data?.filter((f) => f.fixtureId !== DEMO_FIXTURE.fixtureId) ?? STATIC_UPCOMING
+  ).filter((f) => f.startTimeMs === null || f.startTimeMs > Date.now());
+
+  // Kickoff gate: no markets on events that already started — trading with a
+  // known (or in-progress) result isn't a prediction. Enforced at submit too.
+  const kickoffMs = upcomingFixtures.find((f) => f.fixtureId === fixtureId)?.startTimeMs ?? getFixtureStartTimeMs(fixtureId);
+  const fixtureStarted = kickoffMs !== null && kickoffMs <= Date.now();
+
+  // Keep the selection valid as the live window loads/rolls fixtures out.
+  const firstUpcomingId = upcomingFixtures[0]?.fixtureId;
+  useEffect(() => {
+    if (firstUpcomingId !== undefined && !upcomingFixtures.some((f) => f.fixtureId === fixtureId)) {
+      setFixtureId(firstUpcomingId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstUpcomingId, fixtureId]);
 
   const isDemoFixture = fixtureId === DEMO_FIXTURE.fixtureId;
   const statOptions = isDemoFixture ? [{ label: "P1 goals", key: DEMO_FIXTURE.statKey }] : SELECTABLE_STAT_OPTIONS;
@@ -124,15 +145,27 @@ export default function CreatePage() {
         );
       }
 
+      if (fixtureStarted) {
+        throw new Error("This match has already kicked off — markets can't be opened once the event has started.");
+      }
+
       const nowSec = BigInt(Math.floor(Date.now() / 1000));
+      const kickoffSec = kickoffMs !== null ? BigInt(Math.floor(kickoffMs / 1000)) : null;
       const commitEndTs = nowSec + BigInt(Math.max(1, Number(commitMinutes))) * 60n;
       const revealEndTs = commitEndTs + BigInt(Math.max(1, Number(revealMinutes))) * 60n;
       // Sealed: deadline follows the reveal window. AMM: continuous trading
-      // until the creator-chosen close — no windows at all.
-      const deadline =
+      // until the creator-chosen close — capped at kickoff, so no market can
+      // still be accepting bets while the result is unfolding.
+      let deadline =
         marketType === "sealed"
           ? revealEndTs + 900n
           : nowSec + BigInt(Math.max(1, Math.round(Number(tradingHours || "24") * 3600)));
+      if (kickoffSec !== null) {
+        if (marketType === "sealed" && deadline > kickoffSec) {
+          throw new Error("The commit + reveal windows run past kickoff — shorten them so the market closes before the match starts.");
+        }
+        if (deadline > kickoffSec) deadline = kickoffSec;
+      }
 
       const terms = {
         fixtureId: BigInt(fixtureId),
@@ -253,7 +286,9 @@ export default function CreatePage() {
               }
             }}
           >
-            <option value={DEMO_FIXTURE.fixtureId}>{DEMO_FIXTURE.label}</option>
+            {/* upcoming fixtures ONLY — a finished/live event has a known
+                result, so it's not offered (the old demo-fixture option was
+                a match that had already ended) */}
             {upcomingFixtures.map((f) => (
               <option key={f.fixtureId} value={f.fixtureId}>
                 {f.participant1} vs {f.participant2} · {f.competition}
@@ -261,7 +296,20 @@ export default function CreatePage() {
               </option>
             ))}
           </select>
+          {kickoffMs !== null && !fixtureStarted && (
+            <span className="muted" style={{ fontSize: "0.78rem" }}>
+              Kickoff {new Date(kickoffMs).toLocaleString()} — trading always closes at kickoff, even if you choose a
+              longer window.
+            </span>
+          )}
         </label>
+        {(fixtureStarted || upcomingFixtures.length === 0) && (
+          <p className="muted" style={{ margin: 0, color: "var(--red, #f87171)" }}>
+            {upcomingFixtures.length === 0
+              ? "No upcoming fixtures available right now — check back closer to the next match window."
+              : "This match has already kicked off — markets can't be opened once the event has started."}
+          </p>
+        )}
 
         <label className={styles.field}>
           <span>Stat</span>
@@ -376,7 +424,12 @@ export default function CreatePage() {
           )}
         </div>
 
-        <button className="button" type="submit" disabled={!connected || phase === "submitting"} data-testid="create-submit">
+        <button
+          className="button"
+          type="submit"
+          disabled={!connected || phase === "submitting" || fixtureStarted || upcomingFixtures.length === 0}
+          data-testid="create-submit"
+        >
           {phase === "submitting" ? "Submitting…" : marketType === "sealed" ? "Create sealed market" : "Create AMM market & seed pool"}
         </button>
       </form>

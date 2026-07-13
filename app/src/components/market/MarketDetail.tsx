@@ -74,6 +74,11 @@ export function MarketDetail({ pda }: { pda: string }) {
   const startTimeMs = getFixtureStartTimeMs(Number(market.fixtureId));
   const sealed = market.phase !== PHASE_NONE;
   const amm = market.phase === PHASE_NONE && (poolExists.data ?? false);
+  // Until the pool probe + routed pool read land we don't know which layout
+  // this page is (AMM vs plain) — committing to one early made the whole AMM
+  // column POP IN a second later and reflow the page. Hold skeleton columns
+  // in place instead; sealed markets are known immediately from phase.
+  const ammLoading = market.phase === PHASE_NONE && (poolExists.data === undefined || (amm && !routedPool.data));
 
   return (
     <div className={styles.page}>
@@ -142,27 +147,38 @@ export function MarketDetail({ pda }: { pda: string }) {
         </section>
       )}
 
-      <div className={styles.cols} data-sealed={sealed || amm}>
+      <div className={styles.cols} data-sealed={sealed || amm || ammLoading}>
         <div className={styles.colMain}>
           {/* AMM markets price off pool reserves; the sealed panel's batch-
               derived figures read 0/empty there and looked broken next to
               the trade panel's real ¢ price. */}
-          {amm && routedPool.data ? (
+          {ammLoading ? (
+            <>
+              <div className="skeleton" style={{ height: 360 }} aria-hidden />
+              <div className="skeleton" style={{ height: 200 }} aria-hidden />
+            </>
+          ) : amm && routedPool.data ? (
             <AmmPricePanel pool={routedPool.data} isDelegated={routedPool.isDelegated} />
           ) : (
             <PricePanel market={market} connection={query.connection} />
           )}
-          {amm && (
+          {amm && !ammLoading && (
             <>
               <PriceHistoryCard marketPda={market.pda} />
               <RecentTradesCard marketPda={market.pda} />
             </>
           )}
-          {!(sealed || amm) && <SettleClaimPanel market={market} isAmm={amm} />}
+          {!(sealed || amm || ammLoading) && <SettleClaimPanel market={market} isAmm={amm} />}
         </div>
-        {(sealed || amm) && (
+        {(sealed || amm || ammLoading) && (
           <div className={styles.colSide}>
-            {amm && routedPool.data && (
+            {ammLoading && (
+              <>
+                <div className="skeleton" style={{ height: 420 }} aria-hidden />
+                <div className="skeleton" style={{ height: 160 }} aria-hidden />
+              </>
+            )}
+            {!ammLoading && amm && routedPool.data && (
               <AmmTradingPanel
                 market={market}
                 pool={routedPool.data}
@@ -192,7 +208,7 @@ export function MarketDetail({ pda }: { pda: string }) {
                 </details>
               </div>
             )}
-            <SettleClaimPanel market={market} isAmm={amm} />
+            {!ammLoading && <SettleClaimPanel market={market} isAmm={amm} />}
           </div>
         )}
       </div>
