@@ -424,10 +424,8 @@ function StatsStrip() {
     return (
       <div className={styles.statsStrip} aria-hidden>
         {["volume", "open interest", "traders", "settled"].map((label) => (
-          <span key={label}>
-            <strong className="skeleton" style={{ display: "inline-block", width: 42, borderRadius: 6 }}>
-              &nbsp;
-            </strong>{" "}
+          <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <strong className="skeleton" style={{ display: "inline-block", width: 42, height: "0.95rem", borderRadius: 6 }} />
             {label}
           </span>
         ))}
