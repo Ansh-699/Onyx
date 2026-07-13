@@ -358,7 +358,7 @@ export function LandingHero({
     const t = setInterval(() => {
       if (!inView || document.hidden) return;
       setActiveTab((prev) => TABS[(TABS.findIndex((x) => x.id === prev) + 1) % TABS.length]!.id);
-    }, 4500);
+    }, 3000);
     return () => {
       io.disconnect();
       clearInterval(t);
