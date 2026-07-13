@@ -273,7 +273,7 @@ export default function CreatePage() {
         </label>
 
         <label className={styles.field}>
-          <span>Fixture</span>
+          <span>Match</span>
           <select
             value={fixtureId}
             onChange={(e) => {
@@ -292,7 +292,7 @@ export default function CreatePage() {
             {upcomingFixtures.map((f) => (
               <option key={f.fixtureId} value={f.fixtureId}>
                 {f.participant1} vs {f.participant2} · {f.competition}
-                {f.startTimeMs ? ` · ${new Date(f.startTimeMs).toLocaleDateString()}` : ""} (#{f.fixtureId})
+                {f.startTimeMs ? ` · ${new Date(f.startTimeMs).toLocaleDateString()}` : ""}
               </option>
             ))}
           </select>
@@ -324,9 +324,13 @@ export default function CreatePage() {
 
         {pairKey != null && (
           <div className={styles.row}>
-            <label className={styles.field} style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
+            <label
+              className={styles.field}
+              style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap" }}
+              title={`Bet on both teams together: the market settles on ${statLabel} ${combined && combineOp === "subtract" ? "−" : "+"} ${pairLabel} instead of one team's number alone (e.g. "Total goals" or "Goal difference").`}
+            >
               <input type="checkbox" checked={combined} onChange={(e) => setCombined(e.target.checked)} />
-              <span>Combine with {pairLabel} (both participants)</span>
+              <span>Count both teams</span>
             </label>
             {combined && (
               <label className={styles.field}>

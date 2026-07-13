@@ -598,3 +598,16 @@ tr:last-child td {
   width: 20px;
   height: 20px;
 }
+
+/* native number-input spinner arrows look broken on the dark theme — hide
+   them everywhere; the inputs stay typeable and arrow-key steppable */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
