@@ -183,7 +183,7 @@ export default async function LandingPage() {
       {/* announcement strip */}
       <div className={styles.announce}>
         Now live on Solana devnet ·{" "}
-        <a href="https://github.com/Ansh-699" target="_blank" rel="noopener noreferrer">
+        <a href="https://github.com/Ansh-699/Onyx" target="_blank" rel="noopener noreferrer">
           Github
         </a>
       </div>
