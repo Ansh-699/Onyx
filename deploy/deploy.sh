@@ -21,6 +21,8 @@ cd app
 bun run build   # aborts the script on failure — pm2 keeps serving the old build
 
 echo "==> reloading pm2 process"
-pm2 reload onyx --update-env
+# reload if running, create if not (first deploy / after a crash)
+pm2 reload onyx --update-env 2>/dev/null || pm2 start "bun run start" --name onyx --cwd "$REPO_DIR/app" --time
+pm2 save > /dev/null
 
 echo "==> deployed $(git -C "$REPO_DIR" rev-parse --short HEAD)"
