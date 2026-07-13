@@ -382,3 +382,59 @@
   font-size: 0.75rem;
   min-width: 104px;
 }
+
+/* ---- small toggle switch (session on/off) ---- */
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switchTrack {
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: background 160ms ease, border-color 160ms ease;
+  flex: none;
+}
+
+.switchTrack::after {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.switch input:checked + .switchTrack {
+  background: rgba(74, 222, 128, 0.25);
+  border-color: rgba(74, 222, 128, 0.6);
+}
+
+.switch input:checked + .switchTrack::after {
+  transform: translateX(16px);
+  background: var(--green);
+}
+
+.switch input:disabled + .switchTrack {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.switch input:focus-visible + .switchTrack {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

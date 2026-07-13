@@ -507,9 +507,16 @@ export function AmmTradingPanel({
             <span aria-hidden style={{ background: "var(--green)", display: "inline-block", width: 7, height: 7, borderRadius: "50%", marginRight: 6 }} />
             1-click on · expires {new Date(session.expiry * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           </span>
-          <button type="button" className={`button ${styles.miniBtn}`} data-variant="ghost" onClick={onEndSession} disabled={!!busy}>
-            Turn off
-          </button>
+          <label className={styles.switch} title="Turn off 1-click trading (revokes the browser session key)">
+            <input
+              type="checkbox"
+              checked
+              disabled={!!busy}
+              onChange={() => void onEndSession()}
+              aria-label="1-click trading"
+            />
+            <span className={styles.switchTrack} aria-hidden />
+          </label>
         </div>
       )}
 
@@ -606,7 +613,12 @@ export function AmmTradingPanel({
             // Not a dead end: wallet funds ≠ market funds (per-market escrow),
             // so offer the one action that unblocks the buy.
             <button className="glass-action" type="button" onClick={onDeposit} data-testid="amm-swap-btn">
-              ＋ Add funds to trade ({fmtUsdc(held)} tUSDC left in market)
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                <span>＋ Add funds to trade</span>
+                <span style={{ fontSize: "0.72rem", fontWeight: 500, opacity: 0.8 }}>
+                  {fmtUsdc2(held)} tUSDC left in market
+                </span>
+              </span>
             </button>
           ) : (
             <button className="glass-action" type="submit" disabled={!!busy || !quote || insufficient} data-testid="amm-swap-btn">
@@ -750,13 +762,16 @@ export function AmmTradingPanel({
 
       <details className={styles.blurb} style={{ marginTop: 12, fontSize: "0.78rem" }}>
         <summary className="muted" style={{ cursor: "pointer" }}>
-          ⓘ Honesty note
+          ⓘ Note
         </summary>
         <p style={{ marginTop: 6, marginBottom: 0 }}>
           AMM markets are continuously priced and front-runnable in principle, like any AMM — transaction
           ordering belongs to the sequencer. Your slippage tolerance is enforced on-chain (the swap reverts
           rather than fill worse than your min), but it is not MEV-proofing. For MEV-proof execution, use a{" "}
-          <strong>sealed-batch market</strong> — uniform clearing price, no ordering advantage.
+          <strong>sealed-batch market</strong>: bets stay hidden until the commit window closes, then everyone
+          fills at one uniform clearing price — no ordering advantage.{" "}
+          <a href="/demo/mev">See how sealed pricing works →</a> or{" "}
+          <a href="/create">create a sealed market</a> (market type: &ldquo;Advanced: sealed batch&rdquo;).
         </p>
       </details>
       <FundingModal open={fundingOpen} onClose={() => setFundingOpen(false)} />
