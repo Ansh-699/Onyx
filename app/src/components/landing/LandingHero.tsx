@@ -339,10 +339,37 @@ export function LandingHero({
     return () => io.disconnect();
   }, []);
 
+  // Auto-advance the preview tabs while the panel fills the viewport (the
+  // hero CTA has scrolled to the top) so visitors see it's a live, tabbed
+  // demo — until they touch the tabs themselves. Reduced motion opts out.
+  const [autoCycle, setAutoCycle] = useState(true);
+  useEffect(() => {
+    if (!revealed || !autoCycle) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const el = panelRef.current;
+    if (!el) return;
+    let inView = false;
+    // 0.9: only once the visitor has actually scrolled the panel to fill the
+    // viewport (at page load it already peeks ~75% in — too early to switch)
+    const io = new IntersectionObserver(([e]) => (inView = (e?.intersectionRatio ?? 0) >= 0.9), {
+      threshold: [0, 0.9, 1],
+    });
+    io.observe(el);
+    const t = setInterval(() => {
+      if (!inView || document.hidden) return;
+      setActiveTab((prev) => TABS[(TABS.findIndex((x) => x.id === prev) + 1) % TABS.length]!.id);
+    }, 4500);
+    return () => {
+      io.disconnect();
+      clearInterval(t);
+    };
+  }, [revealed, autoCycle]);
+
   function onTabKey(e: React.KeyboardEvent) {
     const idx = TABS.findIndex((t) => t.id === activeTab);
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
       e.preventDefault();
+      setAutoCycle(false); // user took over
       const next = e.key === "ArrowRight" ? (idx + 1) % TABS.length : (idx - 1 + TABS.length) % TABS.length;
       setActiveTab(TABS[next]!.id);
       tabRefs.current[next]?.focus();
@@ -424,7 +451,10 @@ export function LandingHero({
                 aria-controls="landing-preview-panel"
                 tabIndex={activeTab === t.id ? 0 : -1}
                 data-primary={activeTab === t.id}
-                onClick={() => setActiveTab(t.id)}
+                onClick={() => {
+                  setAutoCycle(false); // user took over
+                  setActiveTab(t.id);
+                }}
               >
                 {t.label}
               </button>

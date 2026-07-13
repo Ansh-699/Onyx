@@ -16,6 +16,7 @@ import styles from "./Nav.module.css";
 
 const LINKS = [
   { href: "/markets", label: "Markets" },
+  { href: "/create", label: "Create" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/how-to-trade", label: "How to trade" },
