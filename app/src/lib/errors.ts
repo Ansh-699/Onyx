@@ -87,6 +87,8 @@ export function friendlyError(err: unknown): string {
   if (code !== null) return `Program error ${code} — see the transaction logs for detail.`;
 
   // Wallet / RPC failure shapes.
+  if (/ExternalAccountDataModified/i.test(raw))
+    return "This market is delegated to the Ephemeral Rollup, so base-layer writes to it fail. Click “Move to base (undelegate)” in the trading panel, wait a few seconds, then retry.";
   if (/user rejected|rejected the request|declined/i.test(raw))
     return "You declined the signature in your wallet — nothing was sent.";
   if (/invalid account data/i.test(raw))
