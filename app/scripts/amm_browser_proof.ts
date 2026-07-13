@@ -286,7 +286,7 @@ async function main() {
   const posInfo = await base.getAccountInfo(bettorPosition);
   const tokensA = posInfo!.data.readBigUInt64LE(80);
   const sellAmt = tokensA / 2n;
-  await page.selectOption('[data-testid="amm-direction"]', "1");
+  await page.click('[data-testid="amm-dir-sell"]'); // direction is a segmented control now, not a <select>
   await page.fill('[data-testid="amm-amount"]', (Number(sellAmt) / 1e6).toFixed(6));
   await page.fill('[data-testid="amm-tolerance"]', "1.0");
   await page.waitForTimeout(600);

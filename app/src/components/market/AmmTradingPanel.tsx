@@ -123,6 +123,8 @@ export function AmmTradingPanel({
   const [direction, setDirection] = useState<number>(SWAP_BUY);
   const [amountStr, setAmountStr] = useState("0.5");
   const [tolStr, setTolStr] = useState("1.0");
+  // %-of-balance slider position (display only — amountStr is the source of truth)
+  const [pctBal, setPctBal] = useState(0);
   // Trading session (MagicBlock session keys): ephemeral browser key that
   // signs ER swaps popup-free; the wallet signed one create_session tx to
   // scope it. Loaded per wallet; null = no live session.
@@ -543,20 +545,102 @@ export function AmmTradingPanel({
             </div>
           </dl>
 
-          <div className={styles.fields}>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>Action</span>
-              <select value={direction} onChange={(e) => setDirection(Number(e.target.value))} data-testid="amm-direction">
-                <option value={SWAP_BUY}>Buy</option>
-                <option value={SWAP_SELL}>Sell</option>
-              </select>
-            </label>
-            <label className={styles.field}>
-              <span className={styles.fieldLabel}>{direction === SWAP_BUY ? "Spend (USDC)" : `Sell (${side === SIDE_A ? "YES" : "NO"} tokens)`}</span>
-              <input value={amountStr} onChange={(e) => setAmountStr(e.target.value)} inputMode="decimal" placeholder="0.5" data-testid="amm-amount" />
-            </label>
+          <div className={styles.seg} role="tablist" aria-label="Buy or sell" data-testid="amm-direction">
+            {[
+              { dir: SWAP_BUY, label: "Buy", testid: "amm-dir-buy" },
+              { dir: SWAP_SELL, label: "Sell", testid: "amm-dir-sell" },
+            ].map((d) => (
+              <button
+                key={d.dir}
+                type="button"
+                className={styles.segBtn}
+                data-active={direction === d.dir}
+                data-testid={d.testid}
+                onClick={() => {
+                  setDirection(d.dir);
+                  setPctBal(0);
+                }}
+              >
+                {d.label}
+              </button>
+            ))}
           </div>
-          <label className={styles.field} style={{ maxWidth: 220 }}>
+
+          <div className={styles.amountBox}>
+            <span className={styles.fieldLabel}>Amount</span>
+            <input
+              value={amountStr}
+              onChange={(e) => {
+                setAmountStr(e.target.value);
+                const cap = Number(held) / 1e6;
+                const v = parseFloat(e.target.value);
+                setPctBal(cap > 0 && Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round((v / cap) * 100))) : 0);
+              }}
+              inputMode="decimal"
+              placeholder="0"
+              data-testid="amm-amount"
+            />
+            <span className={styles.amountUnit}>
+              {direction === SWAP_BUY ? "tUSDC" : `${side === SIDE_A ? "YES" : "NO"} tokens`}
+            </span>
+          </div>
+
+          <div className={styles.chipRow}>
+            {[0.5, 1, 5].map((x) => (
+              <button
+                key={x}
+                type="button"
+                className={styles.chip}
+                disabled={!!busy}
+                onClick={() => {
+                  const cap = Number(held) / 1e6;
+                  const v = Math.min(cap > 0 ? cap : Infinity, (parseFloat(amountStr) || 0) + x);
+                  setAmountStr(v.toFixed(2));
+                  setPctBal(cap > 0 ? Math.min(100, Math.round((v / cap) * 100)) : 0);
+                }}
+              >
+                +{x}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={styles.chip}
+              disabled={!!busy || held === 0n}
+              onClick={() => {
+                setAmountStr((Number(held) / 1e6).toFixed(2));
+                setPctBal(100);
+              }}
+            >
+              MAX
+            </button>
+          </div>
+
+          {/* ratchet slider: amount as a % of what's spendable/sellable here */}
+          <div>
+            <span className={styles.fieldLabel}>
+              {direction === SWAP_BUY ? "Spend % of market balance" : "Sell % of holdings"}
+            </span>
+            <div className={styles.pctRow}>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={pctBal}
+                disabled={held === 0n}
+                className={styles.pctSlider}
+                aria-label="Percent of balance"
+                onChange={(e) => {
+                  const p = Number(e.target.value);
+                  setPctBal(p);
+                  setAmountStr(((Number(held) / 1e6) * (p / 100)).toFixed(2));
+                }}
+              />
+              <span className={styles.pctVal}>{pctBal}%</span>
+            </div>
+          </div>
+
+          <div>
             {/* enforcement detail lives in the ⓘ tooltip — still on-chain (min_out → SlippageExceeded) */}
             <span className={styles.fieldLabel}>
               Max slippage %{" "}
@@ -564,8 +648,28 @@ export function AmmTradingPanel({
                 ⓘ
               </span>
             </span>
-            <input value={tolStr} onChange={(e) => setTolStr(e.target.value)} inputMode="decimal" placeholder="1.0" data-testid="amm-tolerance" />
-          </label>
+            <div className={styles.chipRow} style={{ marginTop: 4 }}>
+              <input
+                value={tolStr}
+                onChange={(e) => setTolStr(e.target.value)}
+                inputMode="decimal"
+                placeholder="1.0"
+                data-testid="amm-tolerance"
+                style={{ width: 72 }}
+              />
+              {["0.5", "1.0", "2.0"].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={styles.chip}
+                  data-active={parseFloat(tolStr) === parseFloat(t)}
+                  onClick={() => setTolStr(t)}
+                >
+                  {parseFloat(t)}%
+                </button>
+              ))}
+            </div>
+          </div>
 
           {quote && (
             <dl className={styles.statGrid} data-testid="amm-quote">
@@ -595,17 +699,21 @@ export function AmmTradingPanel({
             </dl>
           )}
           {quote && direction === SWAP_BUY && amountIn && (
-            <div data-testid="amm-towin" title="Winning shares redeem 1:1 for tUSDC at settlement — this is your payout if this side wins, and the profit over what you're spending now. If the other side wins, these shares pay 0.">
-              <div className={styles.toWinRow}>
-                <span>To win</span>
-                <span className={styles.toWinValue}>
-                  {fmtUsdc2(quote.out)} tUSDC
-                  {quote.out > amountIn && ` · +${fmtUsdc2(quote.out - amountIn)}`}
-                </span>
+            <div
+              className={styles.potRow}
+              data-testid="amm-towin"
+              title="Winning shares redeem 1:1 for tUSDC at settlement — this is your payout if this side wins, and the profit over what you're spending now. If the other side wins, these shares pay 0."
+            >
+              <div>
+                <div className={styles.potLabel}>Potential profit ({side === SIDE_A ? "Yes" : "No"})</div>
+                <div className={styles.potSub}>
+                  entry {quote.out > 0n ? ((Number(amountIn) / Number(quote.out)) * 100).toFixed(1) : "—"}¢ · payout{" "}
+                  {fmtUsdc2(quote.out)} tUSDC · redeems 1:1
+                </div>
               </div>
-              <div className="muted" style={{ fontSize: "0.72rem", textAlign: "right", marginTop: 2 }}>
-                if {side === SIDE_A ? "YES" : "NO"} wins · redeems 1:1
-              </div>
+              <span className={styles.potValue}>
+                {quote.out > amountIn ? `+${fmtUsdc2(quote.out - amountIn)}` : fmtUsdc2(quote.out)}
+              </span>
             </div>
           )}
 
