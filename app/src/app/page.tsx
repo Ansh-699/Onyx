@@ -160,6 +160,43 @@ async function getLiveData(): Promise<LiveData | null> {
   }
 }
 
+// Mock fallbacks so the preview panel never renders empty when devnet has no
+// markets / recorded trades. Clearly illustrative — same fixtures as the
+// sample cards; TradeScreen draws its own sample chart when points are empty.
+const MOCK_DEMO: DemoData = {
+  marketPda: "sample-demo",
+  fixture: "🇳🇴 Norway vs England 🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+  title: "England goals — over 2.5",
+  yesCents: 41,
+  reserveA: "5900000000",
+  reserveB: "4100000000",
+  feeBps: 100,
+  volume: "312",
+  points: [],
+};
+
+function mockActivity(): ActivityRow[] {
+  const now = Date.now();
+  const rows: Array<[string, number, number, string, number, number]> = [
+    // [title, side, dir, amount, priceCents, minutes ago]
+    ["Norway–England · England goals — over 2.5", 1, 0, "25.00", 41, 1],
+    ["Spain–Belgium · Total corners — over 9.5", 2, 0, "12.50", 38, 4],
+    ["Argentina–Switzerland · Total yellow cards — over 4.5", 1, 1, "18.20", 33, 11],
+    ["Norway–England · Norway goals — over 0.5", 1, 0, "40.00", 71, 26],
+    ["Spain–Belgium · Total corners — over 9.5", 1, 0, "8.75", 62, 58],
+    ["Norway–England · England goals — over 2.5", 2, 1, "30.10", 59, 84],
+    ["Argentina–Switzerland · Total yellow cards — over 4.5", 2, 0, "15.00", 67, 132],
+  ];
+  return rows.map(([title, side, dir, amount, priceCents, minsAgo]) => ({
+    title,
+    side,
+    dir,
+    amount,
+    priceCents,
+    t: now - minsAgo * 60_000,
+  }));
+}
+
 const FEATURES = [
   {
     title: "Ephemeral Rollup speed",
@@ -190,7 +227,11 @@ export default async function LandingPage() {
 
       {/* ---- sky hero + tabbed preview panel (client component) ---- */}
       <div className={styles.skyZone}>
-        <LandingHero demo={live?.demo ?? null} preview={live?.preview ?? []} activity={live?.activity ?? []} />
+        <LandingHero
+          demo={live?.demo ?? MOCK_DEMO}
+          preview={live?.preview ?? []}
+          activity={live?.activity.length ? live.activity : mockActivity()}
+        />
       </div>
 
       {/* ---- light lower sections ---- */}
