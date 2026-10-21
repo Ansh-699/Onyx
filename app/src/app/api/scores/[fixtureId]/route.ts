@@ -7,7 +7,7 @@ import { getFixtureScore } from "@/lib/txlineScores";
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ fixtureId: string }> }) {
   const { fixtureId } = await params;
   const id = Number(fixtureId);
-  if (!Number.isFinite(id)) {
+  if (!/^\d{1,12}$/.test(fixtureId)) {
     return NextResponse.json({ error: "invalid fixtureId" }, { status: 400 });
   }
   const score = await getFixtureScore(id);

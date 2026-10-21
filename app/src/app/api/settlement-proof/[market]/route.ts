@@ -20,17 +20,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ mar
     return NextResponse.json({ ok: false, reason: "invalid market address" }, { status: 400 });
   }
 
-  const market = await getMarket(marketPk.toBase58());
-  if (!market) {
-    return NextResponse.json({ ok: false, reason: "market not found on-chain" }, { status: 404 });
+  try {
+    const market = await getMarket(marketPk.toBase58());
+    if (!market) {
+      return NextResponse.json({ ok: false, reason: "market not found on-chain" }, { status: 404 });
+    }
+
+    const result = await getLiveSettlementProof({
+      fixtureId: Number(market.fixtureId),
+      statAKey: market.statAKey,
+      statBKey: market.statBKey,
+    });
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ ok: false, reason: "upstream unavailable" }, { status: 502 });
   }
-
-  const result = await getLiveSettlementProof({
-    fixtureId: Number(market.fixtureId),
-    statAKey: market.statAKey,
-    statBKey: market.statBKey,
-  });
-
-  if (!result.ok) return NextResponse.json(result, { status: 200 });
-  return NextResponse.json(result);
 }
