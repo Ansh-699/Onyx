@@ -22,13 +22,17 @@ jobs:
             ~/.cargo/git
             programs/onyx/target
           key: cargo-${{ runner.os }}-${{ hashFiles('programs/onyx/Cargo.lock') }}
+      # Pinned: the unpinned `stable` installer began failing at the link step
+      # (undefined `abort` / `sol_sha256` / `sol_keccak256`, sbpfv3 target) on
+      # Oct 21 2026; the same code and Cargo.lock passed on Jul 19. These are
+      # the versions all 111 program tests were verified against locally.
       - name: Install Solana toolchain (build-sbf)
         run: |
-          curl -sSfL https://release.anza.xyz/stable/install | sh
+          curl -sSfL https://release.anza.xyz/v4.2.1/install | sh
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
       - name: Build SBF binary (mollusk tests execute the real .so)
         working-directory: programs/onyx
-        run: cargo build-sbf
+        run: cargo build-sbf --tools-version v1.54
       - name: Program test suite
         working-directory: programs/onyx
         run: cargo test --release
@@ -50,9 +54,9 @@ jobs:
       - name: Typecheck
         working-directory: app
         run: bunx tsc --noEmit
-      - name: Unit tests (ammMath vs fpmm vectors)
+      - name: Unit tests (ammMath vs fpmm vectors, server keypair, API guards)
         working-directory: app
-        run: bun test src/lib/ammMath.test.ts
+        run: bun test src/lib
       - name: Production build
         working-directory: app
         run: bun run build
