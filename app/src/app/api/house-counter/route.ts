@@ -17,7 +17,7 @@
 // else's.
 
 import { NextRequest, NextResponse } from "next/server";
-import { readFileSync } from "node:fs";
+import { loadServerKeypair } from "@/lib/serverKeypair";
 import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount, mintTo, getAccount } from "@solana/spl-token";
 import { getConfigUsdcMint } from "@/lib/onchain";
@@ -41,12 +41,6 @@ function houseParams(userSide: number, userSize: bigint) {
   return { side, size: userSize, limitPrice, nonce: HOUSE_NONCE };
 }
 
-function loadHouseKeypair(): Keypair {
-  const path = process.env.ANCHOR_WALLET;
-  if (!path) throw new Error("ANCHOR_WALLET not set (server env) — see app/.env.local");
-  const secret = JSON.parse(readFileSync(path, "utf8"));
-  return Keypair.fromSecretKey(Uint8Array.from(secret));
-}
 
 function getRpcUrl(): string {
   return process.env.SOLANA_RPC_URL ?? process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -64,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     const connection = new Connection(getRpcUrl(), "confirmed");
-    const house = loadHouseKeypair();
+    const house = loadServerKeypair();
     const usdcMint = await getConfigUsdcMint();
     if (!usdcMint) return NextResponse.json({ ok: false, error: "config not initialized" }, { status: 400 });
 

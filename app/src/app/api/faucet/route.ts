@@ -10,7 +10,7 @@
 // because our devnet test-USDC mint's authority is our own dev keypair.
 
 import { NextRequest, NextResponse } from "next/server";
-import { readFileSync } from "node:fs";
+import { loadServerKeypair } from "@/lib/serverKeypair";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount, mintTo, getAccount } from "@solana/spl-token";
 import { getConfigUsdcMint } from "@/lib/onchain";
@@ -25,12 +25,6 @@ const TOP_UP = 100_000_000n; // mint up to 100.000000 when below MIN_BALANCE
 const COOLDOWN_MS = 10 * 60_000;
 const lastMintAt = new Map<string, number>();
 
-function loadMintAuthority(): Keypair {
-  const path = process.env.ANCHOR_WALLET;
-  if (!path) throw new Error("ANCHOR_WALLET not set (server env) — see app/.env.local");
-  const secret = JSON.parse(readFileSync(path, "utf8"));
-  return Keypair.fromSecretKey(Uint8Array.from(secret));
-}
 
 function getRpcUrl(): string {
   return process.env.SOLANA_RPC_URL ?? process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -42,7 +36,7 @@ export async function POST(req: NextRequest) {
     const user = new PublicKey(String(body.user));
 
     const connection = new Connection(getRpcUrl(), "confirmed");
-    const authority = loadMintAuthority();
+    const authority = loadServerKeypair();
     const usdcMint = await getConfigUsdcMint();
     if (!usdcMint) return NextResponse.json({ ok: false, error: "config not initialized" }, { status: 400 });
 

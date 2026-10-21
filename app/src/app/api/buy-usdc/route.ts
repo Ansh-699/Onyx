@@ -13,7 +13,7 @@
 // POST /api/buy-usdc { user, lamports } -> { ok, tx (base64), usdcOut, blockhash, lastValidBlockHeight }
 
 import { NextRequest, NextResponse } from "next/server";
-import { readFileSync } from "node:fs";
+import { loadServerKeypair } from "@/lib/serverKeypair";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { createAssociatedTokenAccountIdempotentInstruction, createMintToInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { getConfigUsdcMint } from "@/lib/onchain";
@@ -23,11 +23,6 @@ const LAMPORTS_PER_USDC_UNIT = 5n;
 const MIN_LAMPORTS = 10_000_000n; // 0.01 SOL
 const MAX_LAMPORTS = 2_000_000_000n; // 2 SOL per request — devnet sanity cap
 
-function loadTreasury(): Keypair {
-  const path = process.env.ANCHOR_WALLET;
-  if (!path) throw new Error("ANCHOR_WALLET not set (server env)");
-  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
-}
 
 function getRpcUrl(): string {
   return process.env.SOLANA_RPC_URL ?? process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -43,7 +38,7 @@ export async function POST(req: NextRequest) {
     }
 
     const connection = new Connection(getRpcUrl(), "confirmed");
-    const treasury = loadTreasury();
+    const treasury = loadServerKeypair();
     const usdcMint = await getConfigUsdcMint();
     if (!usdcMint) return NextResponse.json({ ok: false, error: "config not initialized" }, { status: 400 });
 

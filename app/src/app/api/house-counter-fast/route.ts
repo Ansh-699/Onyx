@@ -24,7 +24,7 @@
 //                        as the classic house-counter route).
 
 import { NextRequest, NextResponse } from "next/server";
-import { readFileSync } from "node:fs";
+import { loadServerKeypair } from "@/lib/serverKeypair";
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount, mintTo, getAccount } from "@solana/spl-token";
 import { getConfigUsdcMint, getTradingAccount, ONYX_PROGRAM_ID, TRADING_STATUS_LOCKED, TRADING_STATUS_REVEALED } from "@/lib/onchain";
@@ -51,12 +51,6 @@ function houseParams(userSide: number, userSize: bigint) {
   return { side, size: userSize, limitPrice };
 }
 
-function loadHouseKeypair(): Keypair {
-  const path = process.env.ANCHOR_WALLET;
-  if (!path) throw new Error("ANCHOR_WALLET not set (server env) — see app/.env.local");
-  const secret = JSON.parse(readFileSync(path, "utf8"));
-  return Keypair.fromSecretKey(Uint8Array.from(secret));
-}
 
 function getBaseUrl(): string {
   return process.env.SOLANA_RPC_URL ?? process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -150,7 +144,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "invalid userSide" }, { status: 400 });
     }
 
-    const house = loadHouseKeypair();
+    const house = loadServerKeypair();
 
     if (action === "ensure") {
       const result = await ensureHouseReady(market, house);
