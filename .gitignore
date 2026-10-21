@@ -26,3 +26,7 @@ fixtures/tmp/
 app/.agents/
 .refine-relay.json
 app/.refine-relay.json
+
+# architect research working state (raw findings, screenshots)
+.architect/
+.playwright-mcp/
