@@ -22,7 +22,7 @@ use crate::state::position::{Position, POSITION_LEN};
 use crate::util::read_u64_le;
 
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], args: &[u8]) -> ProgramResult {
-    let [user, config_ai, market_ai, position_ai, vault_ai, user_ata, token_program, _system_program, ..] =
+    let [user, config_ai, market_ai, position_ai, vault_ai, user_ata, _token_program, _system_program, ..] =
         accounts
     else {
         return Err(OnyxError::InvalidInstructionData.into());

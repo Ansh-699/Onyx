@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import { getConnection, decodeAmmPosition, ammPositionPda } from "@/lib/onchain";
+import { apiError } from "@/lib/apiGuard";
 
 const ONYX_PROGRAM_ID = new PublicKey("4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB");
 const DELEGATION_PROGRAM_ID = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
@@ -46,13 +47,16 @@ export async function GET() {
         deployed: e.deployed.toString(),
         withdrawn: e.withdrawn.toString(),
       }))
-      .sort((a, b) => Number(BigInt(b.deployed) + BigInt(b.withdrawn)) - Number(BigInt(a.deployed) + BigInt(a.withdrawn)))
+      .sort((a, b) => {
+        const d = BigInt(b.deployed) + BigInt(b.withdrawn) - (BigInt(a.deployed) + BigInt(a.withdrawn));
+        return d > 0n ? 1 : d < 0n ? -1 : 0;
+      })
       .slice(0, 50);
 
     const body = { ok: true, rows, at: Date.now() };
     cached = { at: Date.now(), body };
     return NextResponse.json(body);
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    return apiError(err);
   }
 }

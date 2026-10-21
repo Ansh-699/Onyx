@@ -30,12 +30,16 @@ export async function GET() {
       .finally(() => {
         inflight = null;
       });
+    // Background refresh with a warm cache has no awaiter, so a rejection here
+    // would be unhandled; keep serving the stale body instead.
+    inflight.catch((err) => console.error("markets refresh failed", err));
     if (!cached) {
       // nothing to serve stale — first hit (or every hit after a failure) waits
       try {
         await inflight;
       } catch (err) {
-        return NextResponse.json({ error: String(err) }, { status: 502 });
+        console.error(err);
+        return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
       }
     }
   }

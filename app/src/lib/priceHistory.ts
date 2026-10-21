@@ -11,7 +11,7 @@
 // the UI falls back to live-sampled-only history.
 // ponytail: fs JSON, move to KV/sqlite if this ever runs multi-instance.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface PricePoint {
@@ -58,7 +58,11 @@ export function readHistory(): Store {
 function writeStore(store: Store): void {
   try {
     mkdirSync(dataDir(), { recursive: true });
-    writeFileSync(storePath(), JSON.stringify(store));
+    // temp + rename: a crash mid-write must not leave a truncated file, which
+    // readHistory would read as empty and the next write would then persist.
+    const tmp = `${storePath()}.tmp`;
+    writeFileSync(tmp, JSON.stringify(store));
+    renameSync(tmp, storePath());
   } catch {
     // read-only fs (hosted) — degrade silently to live-sampled-only
   }

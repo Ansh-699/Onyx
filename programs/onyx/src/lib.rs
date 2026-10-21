@@ -40,7 +40,7 @@ pub mod entrypoint;
 // Re-export the dispatcher so integration tests / clients can reference it.
 pub use entrypoint::process_instruction;
 
-/// ONYX program id placeholder. Overwritten at deploy time with the
-/// `cargo build-sbf` keypair. Kept here so PDA derivations have a stable
-/// compile-time id during tests.
+// ONYX program id placeholder. Overwritten at deploy time with the
+// `cargo build-sbf` keypair. Kept here so PDA derivations have a stable
+// compile-time id during tests.
 pinocchio_pubkey::declare_id!("4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB");

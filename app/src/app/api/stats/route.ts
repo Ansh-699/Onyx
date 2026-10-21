@@ -20,6 +20,7 @@ import {
   STATUS_SETTLED,
   STATUS_CLAIMED,
 } from "@/lib/onchain";
+import { apiError } from "@/lib/apiGuard";
 
 const CACHE_MS = 5 * 60_000;
 let cached: { at: number; body: object } | null = null;
@@ -55,6 +56,6 @@ export async function GET() {
     cached = { at: Date.now(), body };
     return NextResponse.json(body);
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    return apiError(err);
   }
 }

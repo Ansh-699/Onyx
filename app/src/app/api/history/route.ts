@@ -9,8 +9,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import { readHistory, recordPricePoint, recordBatch } from "@/lib/priceHistory";
-import { getAmmPoolsForMarkets } from "@/lib/onchain";
+import { getAmmPoolsForMarkets, getConnection } from "@/lib/onchain";
+import { getDelegationStatus, getErConnection } from "@/lib/erRouting";
 import { spotPriceScaled } from "@/lib/ammMath";
+import { BadInput, apiError, clientIp, pubkey, rateLimited, readJson, tooManyRequests } from "@/lib/apiGuard";
 
 const SAMPLE_MS = 15_000;
 // pool pda -> market pda mapping isn't invertible from the pool alone, so
@@ -61,23 +63,38 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const market = new PublicKey(String(body.market)).toBase58();
+    if (rateLimited(`history:${clientIp(req)}`, 60, 60_000)) return tooManyRequests();
+    const body = await readJson(req);
+    const market = pubkey(body.market, "market").toBase58();
     const side = Number(body.side);
     const dir = Number(body.dir);
     const amountIn = String(body.amountIn);
     const sig = String(body.sig);
-    if (![1, 2].includes(side) || ![0, 1].includes(dir)) throw new Error("bad side/dir");
-    if (!/^\d{1,20}$/.test(amountIn)) throw new Error("bad amountIn");
-    if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(sig)) throw new Error("bad sig");
+    if (![1, 2].includes(side) || ![0, 1].includes(dir)) throw new BadInput("bad side/dir");
+    if (!/^\d{1,20}$/.test(amountIn)) throw new BadInput("bad amountIn");
+    if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(sig)) throw new BadInput("bad sig");
 
     const summaries = await getAmmPoolsForMarkets([market]);
     const s = summaries.get(market);
     if (!s) return NextResponse.json({ ok: false, error: "no pool for market" }, { status: 404 });
+
+    // The feed promises real signatures, so don't take the caller's word: the
+    // tx must exist and have succeeded on whichever ledger holds the market.
+    // ponytail: doesn't check the tx touched THIS pool or that side/dir/amountIn
+    // match it; that needs a getTransaction decode per record.
+    const st = await getDelegationStatus(new PublicKey(market));
+    const ledger = st.isDelegated && st.fqdn ? getErConnection(st.fqdn) : getConnection();
+    const { value } = await ledger.getSignatureStatuses([sig], { searchTransactionHistory: true });
+    if (!value[0] || value[0].err) {
+      return NextResponse.json({ ok: false, error: "signature not found or failed" }, { status: 422 });
+    }
+    // idempotent: the same sig is never listed twice
+    if (readHistory().pools[s.pool]?.trades.some((t) => t.sig === sig)) return NextResponse.json({ ok: true });
+
     const point = { t: Date.now(), priceA: Number(spotPriceScaled(s.reserveA, s.reserveB)), fees: s.feesAccrued.toString() };
     recordBatch(s.pool, [point], [{ t: Date.now(), side, dir, amountIn, sig }]);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 400 });
+    return apiError(err);
   }
 }

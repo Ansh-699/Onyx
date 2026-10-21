@@ -29,8 +29,6 @@ use pinocchio::{
     instruction::{AccountMeta, Instruction},
     program::{get_return_data, invoke},
     program_error::ProgramError,
-    pubkey::Pubkey,
-    ProgramResult,
 };
 
 use crate::constants::VALIDATE_STAT_DISC;
