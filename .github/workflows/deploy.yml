@@ -1,7 +1,28 @@
-# Auto-deploy to the DigitalOcean droplet (onyx.ansht.tech) after ci
-# passes on master. The droplet runs deploy/deploy.sh: fetch, install,
-# build, pm2 reload. One secret required: DO_SSH_PRIVATE_KEY (private key
-# matching an entry in the droplet root's authorized_keys).
+# Auto-deploy to the prod box (onyx.ansht.tech) after ci passes on master.
+#
+# The key in DEPLOY_SSH_KEY is NOT an admin key. It is a dedicated ed25519 key
+# whose authorized_keys entry on the box is
+#     restrict,command="/home/azureuser/onyx-deploy-entry.sh" ssh-ed25519 ...
+# so it cannot open a shell, forward a port, or run anything else: the remote
+# command below is ignored and the entry script runs instead. A leaked secret
+# can trigger a deploy of master and nothing more.
+#
+# ~/onyx-deploy-entry.sh lives on the box, outside the repo, on purpose. It
+# fetches origin/master, hard-resets ~/onyx, then execs the fresh
+# deploy/deploy.sh, so a stale or half-rewritten deploy.sh is never what runs:
+#     #!/usr/bin/env bash
+#     set -euo pipefail
+#     cd "$HOME/onyx"
+#     git fetch -q origin master
+#     git reset -q --hard origin/master
+#     exec bash deploy/deploy.sh
+#
+# History: this workflow SSHed to a DigitalOcean droplet as root and failed
+# for months after production moved (prod box 4.194.46.48 since 2026-10-12,
+# login user azureuser, pm2 process onyx-web on :3001). Setup, if the host
+# moves again: mint a new deploy key, install the forced-command entry for it,
+# and update DEPLOY_HOST / DEPLOY_SSH_KEY (secrets) and DEPLOY_USER (variable).
+# `workflow_dispatch` is the honest way to test that without pushing to master.
 
 name: deploy
 
@@ -10,7 +31,10 @@ on:
     workflows: [ci]
     types: [completed]
     branches: [master]
+  workflow_dispatch:
 
+# Never let two deploys interleave on the box. cancel-in-progress is false on
+# purpose: a half-finished install/build is worse than a queued run.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -18,14 +42,49 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 20
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
-      - name: Deploy over ssh
+      - name: Deploy over SSH
         env:
-          SSH_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'azureuser' }}
         run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          set -euo pipefail
+          if [ -z "${DEPLOY_SSH_KEY:-}" ] || [ -z "${DEPLOY_HOST:-}" ]; then
+            echo "::error::DEPLOY_SSH_KEY and DEPLOY_HOST must be set as repository secrets"
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H 134.209.149.89 >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key root@134.209.149.89 'bash /opt/onyx/deploy/deploy.sh'
+          # Not silenced: an unreachable host should say so, not fail five
+          # seconds later with a bare `exit code 1`.
+          if ! ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts; then
+            echo "::error::ssh-keyscan could not reach DEPLOY_HOST. It may still point at the retired DigitalOcean droplet, or port 22 is closed to GitHub runners; see the header of this file."
+            exit 1
+          fi
+          # IdentitiesOnly: offer only this key. The remote command is a
+          # placeholder; the forced command in authorized_keys is what runs.
+          ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes \
+              -o BatchMode=yes \
+              -o ServerAliveInterval=30 \
+              "$DEPLOY_USER@$DEPLOY_HOST" deploy
+
+      - name: Smoke test
+        env:
+          SITE: https://onyx.ansht.tech
+        run: |
+          set -euo pipefail
+          fail=0
+          for p in / /markets; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$SITE$p" || echo 000)
+            echo "$p -> $code"
+            [ "$code" = "200" ] || fail=1
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::site did not come back healthy after deploy"
+            exit 1
+          fi
