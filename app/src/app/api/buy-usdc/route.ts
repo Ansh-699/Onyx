@@ -14,9 +14,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { loadServerKeypair } from "@/lib/serverKeypair";
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Connection, SystemProgram, Transaction } from "@solana/web3.js";
 import { createAssociatedTokenAccountIdempotentInstruction, createMintToInstruction, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { getConfigUsdcMint } from "@/lib/onchain";
+import { apiError, positiveBigint, pubkey, readJson } from "@/lib/apiGuard";
 
 /** 1 SOL (1e9 lamports) buys 200 tUSDC (200e6 base units) → ÷ 5. */
 const LAMPORTS_PER_USDC_UNIT = 5n;
@@ -30,10 +31,10 @@ function getRpcUrl(): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const user = new PublicKey(String(body.user));
-    const lamports = BigInt(String(body.lamports));
-    if (lamports < MIN_LAMPORTS || lamports > MAX_LAMPORTS) {
+    const body = await readJson(req);
+    const user = pubkey(body.user, "user");
+    const lamports = positiveBigint(body.lamports, "lamports", MAX_LAMPORTS);
+    if (lamports < MIN_LAMPORTS) {
       return NextResponse.json({ ok: false, error: "amount must be between 0.01 and 2 SOL" }, { status: 400 });
     }
 
@@ -62,6 +63,6 @@ export async function POST(req: NextRequest) {
       lastValidBlockHeight,
     });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    return apiError(err);
   }
 }

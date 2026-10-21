@@ -11,9 +11,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { loadServerKeypair } from "@/lib/serverKeypair";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount, mintTo, getAccount } from "@solana/spl-token";
 import { getConfigUsdcMint } from "@/lib/onchain";
+import { apiError, clientIp, pubkey, rateLimited, readJson, tooManyRequests } from "@/lib/apiGuard";
 
 const MIN_BALANCE = 50_000_000n; // 50.000000 test-USDC (6dp)
 const TOP_UP = 100_000_000n; // mint up to 100.000000 when below MIN_BALANCE
@@ -25,6 +26,12 @@ const TOP_UP = 100_000_000n; // mint up to 100.000000 when below MIN_BALANCE
 const COOLDOWN_MS = 10 * 60_000;
 const lastMintAt = new Map<string, number>();
 
+// Per-IP cap, checked before anything touches the chain. The per-wallet
+// cooldown below only guards the mint; ATA creation (authority-paid rent)
+// happens first, so a loop over fresh pubkeys would otherwise drain the
+// authority's SOL.
+const IP_MAX = 30;
+const IP_WINDOW_MS = 10 * 60_000;
 
 function getRpcUrl(): string {
   return process.env.SOLANA_RPC_URL ?? process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
@@ -32,8 +39,9 @@ function getRpcUrl(): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const user = new PublicKey(String(body.user));
+    if (rateLimited(`faucet:${clientIp(req)}`, IP_MAX, IP_WINDOW_MS)) return tooManyRequests();
+    const body = await readJson(req);
+    const user = pubkey(body.user, "user");
 
     const connection = new Connection(getRpcUrl(), "confirmed");
     const authority = loadServerKeypair();
@@ -49,6 +57,7 @@ export async function POST(req: NextRequest) {
     if (acct.amount < MIN_BALANCE && Date.now() - last >= COOLDOWN_MS) {
       minted = TOP_UP;
       await mintTo(connection, authority, usdcMint, userAta.address, authority, minted);
+      if (lastMintAt.size > 5_000) for (const [k, t] of lastMintAt) if (Date.now() - t >= COOLDOWN_MS) lastMintAt.delete(k);
       lastMintAt.set(user.toBase58(), Date.now());
     }
 
@@ -59,6 +68,6 @@ export async function POST(req: NextRequest) {
       minted: minted.toString(),
     });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    return apiError(err);
   }
 }

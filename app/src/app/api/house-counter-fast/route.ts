@@ -39,8 +39,13 @@ import {
   SIDE_A,
   SIDE_B,
 } from "@/lib/instructions";
+import { apiError, clientIp, positiveBigint, pubkey, rateLimited, readJson, tooManyRequests } from "@/lib/apiGuard";
 
 const HOUSE_NONCE = 828282n;
+// Public endpoint that mints and signs as the house: bound what one request can ask for.
+const MAX_USER_SIZE = 1_000_000_000_000n; // 1M tUSDC
+const IP_MAX = 60;
+const IP_WINDOW_MS = 10 * 60_000;
 const ODDS_SCALE = 1_000_000n;
 const HOUSE_DEPOSIT = 50_000_000n; // 50 tUSDC — comfortably covers any reasonable demo bet size
 const ROUTER_URL = "https://devnet-router.magicblock.app/";
@@ -135,11 +140,12 @@ async function ensureHouseReady(market: PublicKey, house: Keypair): Promise<{ si
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const market = new PublicKey(String(body.market));
+    if (rateLimited(`house:${clientIp(req)}`, IP_MAX, IP_WINDOW_MS)) return tooManyRequests();
+    const body = await readJson(req);
+    const market = pubkey(body.market, "market");
     const action = String(body.action);
     const userSide = Number(body.userSide);
-    const userSize = BigInt(String(body.userSize));
+    const userSize = positiveBigint(body.userSize, "userSize", MAX_USER_SIZE);
     if (![SIDE_A, SIDE_B].includes(userSide)) {
       return NextResponse.json({ ok: false, error: "invalid userSide" }, { status: 400 });
     }
@@ -190,6 +196,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: false, error: "unknown action" }, { status: 400 });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    return apiError(err);
   }
 }
