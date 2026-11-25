@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Production deploy for onyx.ansht.tech. Runs on the prod box as azureuser, via
+# Production deploy for onyx.ansht.in. Runs on the prod box as azureuser, via
 # the forced-command wrapper ~/onyx-deploy-entry.sh (see the header of
 # .github/workflows/deploy.yml) or by hand. Build-before-reload: a failed build
 # leaves the running app untouched, and the script only reports success once the

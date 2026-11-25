@@ -3,7 +3,7 @@
 **Polymarket-style continuous trading on a MagicBlock Ephemeral Rollup,
 with trustless settlement on Solana built directly on TxODDS's TxLINE.**
 
-**Live demo: [onyx.ansht.tech](https://onyx.ansht.tech)** · Solana devnet ·
+**Live demo: [onyx.ansht.in](https://onyx.ansht.in)** · Solana devnet ·
 program `4LpMzq6wXYFMzxgbyMyN2ja4EQhPsYGHSCAvjwzA18MB`
 
 Two market types, one settlement truth. **AMM markets**: buy *and sell*
@@ -664,7 +664,7 @@ app/                     Next.js frontend — lobby, create, market, receipt, po
 services/ingestion/      TxLINE auth/data client + devnet test harnesses
 scripts/run-demo.sh      one-command sealed demo (`bun run demo`)
 docs/BUILD_STATE.md      full build/proof log, chronological
-docs/DEPLOYMENT.md       production deployment (onyx.ansht.tech) runbook
+docs/DEPLOYMENT.md       production deployment (onyx.ansht.in) runbook
 docs/AMM_TRADING_DESIGN.md    AMM design (shipped, phases A–E)
 docs/ER_TRADING_DESIGN.md     ER trading design notes
 docs/SESSION_TRADING.md       MagicBlock session-key trading design

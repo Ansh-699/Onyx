@@ -1,4 +1,4 @@
-# Auto-deploy to the prod box (onyx.ansht.tech) after ci passes on master.
+# Auto-deploy to the prod box (onyx.ansht.in) after ci passes on master.
 #
 # The key in DEPLOY_SSH_KEY is NOT an admin key. It is a dedicated ed25519 key
 # whose authorized_keys entry on the box is
@@ -12,14 +12,16 @@
 # deploy/deploy.sh, so a stale or half-rewritten deploy.sh is never what runs:
 #     #!/usr/bin/env bash
 #     set -euo pipefail
+#     exec 9>/tmp/onyx-deploy.lock; flock 9
 #     cd "$HOME/onyx"
 #     git fetch -q origin master
 #     git reset -q --hard origin/master
 #     exec bash deploy/deploy.sh
 #
 # History: this workflow SSHed to a DigitalOcean droplet as root and failed
-# for months after production moved (prod box 4.194.46.48 since 2026-10-12,
-# login user azureuser, pm2 process onyx-web on :3001). Setup, if the host
+# for months after production moved. The prod box is 138.91.41.33 since
+# 2026-11-26 (4.194.46.48 before that died), login user azureuser, pm2 process
+# onyx-web on 127.0.0.1:3001 behind Caddy. Setup, if the host
 # moves again: mint a new deploy key, install the forced-command entry for it,
 # and update DEPLOY_HOST / DEPLOY_SSH_KEY (secrets) and DEPLOY_USER (variable).
 # `workflow_dispatch` is the honest way to test that without pushing to master.
@@ -75,7 +77,7 @@ jobs:
 
       - name: Smoke test
         env:
-          SITE: https://onyx.ansht.tech
+          SITE: https://onyx.ansht.in
         run: |
           set -euo pipefail
           fail=0
